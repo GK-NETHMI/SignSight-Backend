@@ -1,2 +1,2 @@
 # SignSight
-Learning platform for def childs
+Learning platform for deaf childs
