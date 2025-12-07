@@ -1,2 +1,2 @@
 # SignSight
-Learning platform for deaf childs
+Emotion & Context-Aware Tamil Sign Language System – Child Module
