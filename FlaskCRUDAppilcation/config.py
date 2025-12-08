@@ -1,9 +1,8 @@
-import mysql.connector
+import pymysql
 
-def get_db_connection():
-    return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="yourpassword",
-        database="learners_db"
-    )
+conn = pymysql.connect(
+    host="localhost",
+    user="root",
+    password="",
+    database="flask_crud"
+)
