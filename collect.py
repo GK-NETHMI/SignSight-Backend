@@ -6,7 +6,7 @@ from datetime import datetime
 
 
 SEQUENCE_LENGTH = 30
-TARGET_PER_EMOTION = 50
+TARGET_PER_EMOTION = 150
 
 EMOTIONS = ["happy", "sad", "angry", "afraid", "neutral"]
 EMOTION_TO_ID = {e: i for i, e in enumerate(EMOTIONS)}
