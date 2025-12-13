@@ -15,9 +15,7 @@ LR = 1e-3
 SEQUENCE_LENGTH = 30
 
 
-# ============================================================
-# LOAD ALL NPZ FILES
-# ============================================================
+
 def load_npz_dataset():
     features = []
     labels = []
@@ -27,7 +25,7 @@ def load_npz_dataset():
             path = os.path.join(DATASET_DIR, fname)
             data = np.load(path)
 
-            seq = data["features"]   # shape (30, feature_dim)
+            seq = data["features"]   
             label = int(data["label"])
 
             features.append(seq)
@@ -40,9 +38,7 @@ def load_npz_dataset():
     return features, labels
 
 
-# ============================================================
-# DATASET CLASS
-# ============================================================
+
 class EmotionDataset(Dataset):
     def __init__(self, X, y):
         self.X = torch.tensor(X, dtype=torch.float32)
@@ -55,9 +51,7 @@ class EmotionDataset(Dataset):
         return self.X[idx], self.y[idx]
 
 
-# ============================================================
-# MODEL (BiLSTM + Attention)
-# ============================================================
+
 class Attention(nn.Module):
     def __init__(self, hidden_dim):
         super().__init__()
@@ -95,34 +89,26 @@ class EmotionNet(nn.Module):
         return self.fc(context)
 
 
-# ============================================================
-# TRAINING PIPELINE
-# ============================================================
+
 def main():
 
-    # --------------------
-    # Load NPZ files
-    # --------------------
+   
     X, y = load_npz_dataset()
 
     feature_dim = X.shape[2]
 
-    # --------------------
-    # Normalize Features
-    # --------------------
+   
     scaler = StandardScaler()
     X_reshaped = X.reshape(-1, feature_dim)
     scaler.fit(X_reshaped)
     X_scaled = scaler.transform(X_reshaped).reshape(X.shape)
 
-    # Save scaler
+   
     os.makedirs("models", exist_ok=True)
     np.save("models/scaler_mean.npy", scaler.mean_)
     np.save("models/scaler_scale.npy", scaler.scale_)
 
-    # --------------------
-    # Train/Val Split
-    # --------------------
+   
     X_train, X_val, y_train, y_val = train_test_split(
         X_scaled, y, test_size=0.2, shuffle=True, stratify=y
     )
@@ -133,9 +119,7 @@ def main():
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE)
 
-    # --------------------
-    # Load Class Map
-    # --------------------
+   
     class_map_path = os.path.join(DATASET_DIR, "class_map.json")
     if os.path.exists(class_map_path):
         with open(class_map_path, "r") as f:
@@ -144,9 +128,7 @@ def main():
     else:
         num_classes = 5
 
-    # --------------------
-    # Model
-    # --------------------
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Training on:", device)
 
@@ -154,9 +136,6 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
-    # --------------------
-    # Training Loop
-    # --------------------
     for epoch in range(EPOCHS):
         model.train()
         total_loss = 0
@@ -172,9 +151,7 @@ def main():
 
             total_loss += loss.item()
 
-        # --------------------
-        # Validation
-        # --------------------
+     
         model.eval()
         correct, total = 0, 0
 
@@ -188,9 +165,7 @@ def main():
         acc = 100 * correct / total
         print(f"Epoch {epoch+1}/{EPOCHS} | Loss: {total_loss:.3f} | Val Acc: {acc:.2f}%")
 
-    # --------------------
-    # Save Model
-    # --------------------
+   
     save_path = "models/emotion_model_npz.pt"
     torch.save(model.state_dict(), save_path)
     print("\n🔥 Model saved to:", save_path)
