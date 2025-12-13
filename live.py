@@ -7,17 +7,13 @@ from collections import deque
 import json
 import os
 
-# ============================================================
-# SETTINGS
-# ============================================================
+
 SEQUENCE_LENGTH = 30
 EMOTIONS = ["happy", "sad", "angry", "afraid", "neutral"]
 EMOTION_TO_ID = {e: i for i, e in enumerate(EMOTIONS)}
 
 
-# ============================================================
-# LOAD SCALER
-# ============================================================
+
 mean = np.load("models/scaler_mean.npy")
 scale = np.load("models/scaler_scale.npy")
 
@@ -25,9 +21,6 @@ def scale_features(arr):
     return (arr - mean) / scale
 
 
-# ============================================================
-# FEATURE EXTRACTION (same as collector)
-# ============================================================
 def compute_features(lm):
     pts = np.array([[p.x, p.y, p.z] for p in lm], dtype=np.float32)
     feats = {}
@@ -70,10 +63,6 @@ def compute_features(lm):
 
     return np.array(list(feats.values()), dtype=np.float32)
 
-
-# ============================================================
-# MODEL (same as training)
-# ============================================================
 class Attention(nn.Module):
     def __init__(self, hidden_dim):
         super().__init__()
@@ -110,9 +99,6 @@ class EmotionNet(nn.Module):
         return self.fc(context)
 
 
-# ============================================================
-# LOAD MODEL
-# ============================================================
 def load_model():
     feature_dim = len(compute_features([type("dummy", (), {"x":0, "y":0, "z":0})()]*500))
     model = EmotionNet(feature_dim)
@@ -121,9 +107,7 @@ def load_model():
     return model
 
 
-# ============================================================
-# MAIN LIVE LOOP
-# ============================================================
+
 def main():
 
     model = load_model()
