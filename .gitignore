@@ -1,10 +1,13 @@
-venv/
+# Project ignores
 __pycache__/
 .DS_Store
 .env
 .github/
+
 # Ignore virtual environments
 .venv/
 venv/
 env/
-.env/
+
+# Backups
+backups/
