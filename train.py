@@ -74,7 +74,7 @@ class EmotionNet(nn.Module):
             dropout=0.3,
             bidirectional=True,
         )
-        self.attn = Attention(hidden_dim * 2)
+        self.attn = Attention(hidden_dim * 3)
 
         self.fc = nn.Sequential(
             nn.Linear(hidden_dim * 2, 256),
