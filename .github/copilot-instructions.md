@@ -1,0 +1,12 @@
+# Copilot usage notes
+- Purpose: single Flask CRUD app for a `students` table; everything lives in `FlaskCRUDAppilcation/app.py` with plain Jinja templates in `templates/` and no blueprints or ORM.
+- Layout highlights: `app.py` routes and SQL; `config.py` holds a bare connection snippet; `test_db.py` is a manual connectivity check; `static/` is unused; `layout.html` is empty and unused.
+- Data model assumptions: MySQL database `flask_crud` with table `students(id PK AUTO_INCREMENT, name, email, age)`; queries rely on column order and Jinja uses tuple indexes (`s[0]`..`s[3]`).
+- DB access pattern: use `get_connection()` in `app.py`, open/close per request, and parameterize SQL with `%s`; commit before closing on writes and always close after cursor usage.
+- Routes: `/` lists all students; `/add` GET shows form, POST inserts; `/edit/<id>` GET fetches one row, POST updates; `/delete/<id>` performs a delete and redirects to `/`.
+- Templates: simple forms/tables, not using inheritance; when adding fields, update both SQL column lists and the corresponding inputs/table cells; keep tuple index order in sync with SELECT order.
+- Running locally (PowerShell): `python -m venv .venv; .\.venv\Scripts\Activate.ps1; pip install -r FlaskCRUDAppilcation/requirements.txt; python FlaskCRUDAppilcation/app.py` (debug is enabled in code).
+- Database setup (local MySQL): ensure `localhost`, user `root`, blank password; create DB/table if missing, e.g. `CREATE DATABASE flask_crud; USE flask_crud; CREATE TABLE students(id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(255), email VARCHAR(255), age INT);`.
+- Smoke tests: run `python FlaskCRUDAppilcation/test_db.py` to verify connectivity; no automated test suite exists.
+- Adding new CRUD entities or columns: mirror the existing pattern—define routes in `app.py` with raw SQL, parameterize values, commit/close, and add matching form fields and display columns in the templates.
+- Safety notes: avoid sharing global connections; do not interpolate SQL strings directly; keep `pymysql` cursor default (tuples) or adjust template access if using dict cursors.

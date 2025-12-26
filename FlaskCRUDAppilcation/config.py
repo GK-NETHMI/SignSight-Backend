@@ -3,6 +3,6 @@ import pymysql
 conn = pymysql.connect(
     host="localhost",
     user="root",
-    password="",
+    password="root",
     database="flask_crud"
 )
