@@ -165,7 +165,7 @@ def main():
         acc = 100 * correct / total
         print(f"Epoch {epoch+1}/{EPOCHS} | Loss: {total_loss:.3f} | Val Acc: {acc:.2f}%")
 
-   
+   #save model
     save_path = "models/emotion_model_npz.pt"
     torch.save(model.state_dict(), save_path)
     print("\n🔥 Model saved to:", save_path)
