@@ -26,9 +26,9 @@ DATASET_DIR = "dataset"
 MODEL_SAVE_PATH = "emotion_model_mobilenet.h5"
 HISTORY_PLOT_PATH = "training_history_mobilenet.png"
 IMG_SIZE = 224
-BATCH_SIZE = 16  # Balanced batch size
+BATCH_SIZE = 16  
 EPOCHS = 50
-INITIAL_LR = 0.001  # Higher initial learning rate
+INITIAL_LR = 0.001  
 
 EMOTIONS = ['Angry', 'Happy', 'Neutral', 'Sad', 'Fear']
 
@@ -84,10 +84,10 @@ def build_model():
         input_shape=(IMG_SIZE, IMG_SIZE, 3)
     )
     
-    # Freeze base model
+   
     base_model.trainable = False
     
-    # Simple, stable head
+    
     model = models.Sequential([
         base_model,
         layers.GlobalAveragePooling2D(),
@@ -101,14 +101,14 @@ def build_model():
 
 
 def main():
-    # Load data
+   
     X, y = load_dataset()
     
     if len(X) == 0:
         print("❌ No data loaded. Please check your dataset!")
         return
     
-    # Split data
+   
     X_train, X_val, y_train, y_val = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
@@ -117,7 +117,7 @@ def main():
     print(f"Training: {len(X_train)} samples")
     print(f"Validation: {len(X_val)} samples")
     
-    # Moderate data augmentation
+   
     train_datagen = ImageDataGenerator(
         rotation_range=20,
         width_shift_range=0.2,
@@ -141,7 +141,7 @@ def main():
         shuffle=False
     )
     
-    # Build model
+   
     print(f"\n🏗️  Building MobileNetV2 model...")
     model, base_model = build_model()
     
