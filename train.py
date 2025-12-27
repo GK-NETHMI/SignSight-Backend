@@ -1,177 +1,287 @@
 import os
 import numpy as np
-import torch
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-from sklearn.preprocessing import StandardScaler
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers, models
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from sklearn.model_selection import train_test_split
-import json
+import cv2
+import matplotlib.pyplot as plt
+from datetime import datetime
 
 
-DATASET_DIR = "emotion_dataset"
-BATCH_SIZE = 16
-EPOCHS = 35
-LR = 1e-3
-SEQUENCE_LENGTH = 30
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        print(f"✅ GPU memory growth enabled for {len(gpus)} GPU(s)")
+    except RuntimeError as e:
+        print(e)
 
 
+DATASET_DIR = "dataset"
+MODEL_SAVE_PATH = "emotion_model_mobilenet.h5"
+HISTORY_PLOT_PATH = "training_history_mobilenet.png"
+IMG_SIZE = 224
+BATCH_SIZE = 16  # Balanced batch size
+EPOCHS = 50
+INITIAL_LR = 0.001  # Higher initial learning rate
 
-def load_npz_dataset():
-    features = []
-    labels = []
+EMOTIONS = ['Angry', 'Happy', 'Neutral', 'Sad', 'Fear']
 
-    for fname in os.listdir(DATASET_DIR):
-        if fname.endswith(".npz"):
-            path = os.path.join(DATASET_DIR, fname)
-            data = np.load(path)
-
-            seq = data["features"]   
-            label = int(data["label"])
-
-            features.append(seq)
-            labels.append(label)
-
-    features = np.array(features)
-    labels = np.array(labels)
-
-    print(f"Loaded {len(features)} sequences.")
-    return features, labels
+print("🚀 Emotion Recognition Training - Optimized Version")
+print(f"Backbone: MobileNetV2 (memory-efficient)")
+print(f"Dataset: {DATASET_DIR}")
+print(f"Image Size: {IMG_SIZE}x{IMG_SIZE}")
+print(f"Batch Size: {BATCH_SIZE}\n")
 
 
+def load_dataset():
+    X = []
+    y = []
+    
+    for idx, emotion in enumerate(EMOTIONS):
+        emotion_path = os.path.join(DATASET_DIR, emotion)
+        if not os.path.exists(emotion_path):
+            print(f"⚠️ Warning: {emotion_path} not found!")
+            continue
+            
+        images = os.listdir(emotion_path)
+        print(f"Loading {emotion}: {len(images)} images")
+        
+        for img_name in images:
+            img_path = os.path.join(emotion_path, img_name)
+            try:
+                img = cv2.imread(img_path)
+                if img is None:
+                    continue
+                    
+                img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                X.append(img)
+                y.append(idx)
+            except Exception as e:
+                continue
+    
+    X = np.array(X, dtype='float32') / 255.0
+    y = np.array(y)
+    
+    print(f"\n✅ Loaded {len(X)} images")
+    print(f"Class distribution: {np.bincount(y)}")
+    
+    return X, y
 
-class EmotionDataset(Dataset):
-    def __init__(self, X, y):
-        self.X = torch.tensor(X, dtype=torch.float32)
-        self.y = torch.tensor(y, dtype=torch.long)
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, idx):
-        return self.X[idx], self.y[idx]
-
-
-
-class Attention(nn.Module):
-    def __init__(self, hidden_dim):
-        super().__init__()
-        self.attn = nn.Linear(hidden_dim, 1)
-
-    def forward(self, lstm_out):
-        weights = torch.softmax(self.attn(lstm_out), dim=1)
-        context = torch.sum(weights * lstm_out, dim=1)
-        return context
-
-
-class EmotionNet(nn.Module):
-    def __init__(self, input_dim, hidden_dim=256, num_classes=5):
-        super().__init__()
-        self.lstm = nn.LSTM(
-            input_dim,
-            hidden_dim,
-            num_layers=2,
-            batch_first=True,
-            dropout=0.3,
-            bidirectional=True,
-        )
-        self.attn = Attention(hidden_dim * 2)
-
-        self.fc = nn.Sequential(
-            nn.Linear(hidden_dim * 2, 256),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, num_classes)
-        )
-
-    def forward(self, x):
-        lstm_out, _ = self.lstm(x)
-        context = self.attn(lstm_out)
-        return self.fc(context)
-
+def build_model():
+    """
+    MobileNetV2-based model - memory efficient and stable
+    """
+    base_model = MobileNetV2(
+        weights='imagenet',
+        include_top=False,
+        input_shape=(IMG_SIZE, IMG_SIZE, 3)
+    )
+    
+    # Freeze base model
+    base_model.trainable = False
+    
+    # Simple, stable head
+    model = models.Sequential([
+        base_model,
+        layers.GlobalAveragePooling2D(),
+        layers.Dropout(0.3),
+        layers.Dense(128, activation='relu', kernel_regularizer=keras.regularizers.l2(0.001)),
+        layers.Dropout(0.3),
+        layers.Dense(len(EMOTIONS), activation='softmax')
+    ])
+    
+    return model, base_model
 
 
 def main():
-
-   
-    X, y = load_npz_dataset()
-
-    feature_dim = X.shape[2]
-
-   
-    scaler = StandardScaler()
-    X_reshaped = X.reshape(-1, feature_dim)
-    scaler.fit(X_reshaped)
-    X_scaled = scaler.transform(X_reshaped).reshape(X.shape)
-
-   
-    os.makedirs("models", exist_ok=True)
-    np.save("models/scaler_mean.npy", scaler.mean_)
-    np.save("models/scaler_scale.npy", scaler.scale_)
-
-   
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_scaled, y, test_size=0.2, shuffle=True, stratify=y
-    )
-
-    train_dataset = EmotionDataset(X_train, y_train)
-    val_dataset = EmotionDataset(X_val, y_val)
-
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE)
-
-   
-    class_map_path = os.path.join(DATASET_DIR, "class_map.json")
-    if os.path.exists(class_map_path):
-        with open(class_map_path, "r") as f:
-            class_map = json.load(f)
-        num_classes = len(class_map)
-    else:
-        num_classes = 5
-
+    # Load data
+    X, y = load_dataset()
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Training on:", device)
-
-    model = EmotionNet(feature_dim, hidden_dim=256, num_classes=num_classes).to(device)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-
-    for epoch in range(EPOCHS):
-        model.train()
-        total_loss = 0
-
-        for Xb, yb in train_loader:
-            Xb, yb = Xb.to(device), yb.to(device)
-
-            optimizer.zero_grad()
-            preds = model(Xb)
-            loss = criterion(preds, yb)
-            loss.backward()
-            optimizer.step()
-
-            total_loss += loss.item()
-
-     
-        model.eval()
-        correct, total = 0, 0
-
-        with torch.no_grad():
-            for Xb, yb in val_loader:
-                Xb, yb = Xb.to(device), yb.to(device)
-                preds = model(Xb)
-                correct += (preds.argmax(1) == yb).sum().item()
-                total += yb.size(0)
-
-        acc = 100 * correct / total
-        print(f"Epoch {epoch+1}/{EPOCHS} | Loss: {total_loss:.3f} | Val Acc: {acc:.2f}%")
-
-   #save model
-    save_path = "models/emotion_model_npz.pt"
-    torch.save(model.state_dict(), save_path)
-    print("\n🔥 Model saved to:", save_path)
-    print("🔥 Scaler saved in models/")
-    print("Training complete!")
-
+    if len(X) == 0:
+        print("❌ No data loaded. Please check your dataset!")
+        return
+    
+    # Split data
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    
+    print(f"\n📊 Data Split:")
+    print(f"Training: {len(X_train)} samples")
+    print(f"Validation: {len(X_val)} samples")
+    
+    # Moderate data augmentation
+    train_datagen = ImageDataGenerator(
+        rotation_range=20,
+        width_shift_range=0.2,
+        height_shift_range=0.2,
+        horizontal_flip=True,
+        zoom_range=0.15,
+        fill_mode='nearest'
+    )
+    
+    val_datagen = ImageDataGenerator()
+    
+    train_generator = train_datagen.flow(
+        X_train, y_train,
+        batch_size=BATCH_SIZE,
+        shuffle=True
+    )
+    
+    val_generator = val_datagen.flow(
+        X_val, y_val,
+        batch_size=BATCH_SIZE,
+        shuffle=False
+    )
+    
+    # Build model
+    print(f"\n🏗️  Building MobileNetV2 model...")
+    model, base_model = build_model()
+    
+    # Compile
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=INITIAL_LR),
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy']
+    )
+    
+    model.summary()
+    
+    # Callbacks
+    callbacks = [
+        ModelCheckpoint(
+            MODEL_SAVE_PATH,
+            monitor='val_accuracy',
+            save_best_only=True,
+            mode='max',
+            verbose=1
+        ),
+        EarlyStopping(
+            monitor='val_loss',
+            patience=10,
+            restore_best_weights=True,
+            verbose=1
+        ),
+        ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.5,
+            patience=3,
+            min_lr=1e-7,
+            verbose=1
+        )
+    ]
+    
+    # Train
+    print("\n🔥 Training phase 1: Frozen base model...")
+    start_time = datetime.now()
+    
+    history_phase1 = model.fit(
+        train_generator,
+        epochs=25,
+        validation_data=val_generator,
+        callbacks=callbacks,
+        verbose=1
+    )
+    
+    # Fine-tune: unfreeze last layers
+    print("\n🔥 Training phase 2: Fine-tuning...")
+    base_model.trainable = True
+    
+    # Freeze all except last 20 layers
+    for layer in base_model.layers[:-20]:
+        layer.trainable = False
+    
+    # Recompile with lower learning rate
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=INITIAL_LR/10),
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy']
+    )
+    
+    history_phase2 = model.fit(
+        train_generator,
+        epochs=EPOCHS-25,
+        validation_data=val_generator,
+        callbacks=callbacks,
+        verbose=1
+    )
+    
+    duration = datetime.now() - start_time
+    print(f"\n✅ Training completed in {duration}")
+    
+    # Combine histories
+    history = {
+        'accuracy': history_phase1.history['accuracy'] + history_phase2.history['accuracy'],
+        'val_accuracy': history_phase1.history['val_accuracy'] + history_phase2.history['val_accuracy'],
+        'loss': history_phase1.history['loss'] + history_phase2.history['loss'],
+        'val_loss': history_phase1.history['val_loss'] + history_phase2.history['val_loss']
+    }
+    
+    # Clear memory and reload best model
+    del model
+    tf.keras.backend.clear_session()
+    
+    print("\n📈 Loading best model for evaluation...")
+    model = keras.models.load_model(MODEL_SAVE_PATH)
+    
+    # Evaluate
+    print("Evaluating on validation set...")
+    val_loss, val_acc = model.evaluate(X_val, y_val, batch_size=BATCH_SIZE, verbose=0)
+    
+    print(f"\n🎯 Best Model Performance:")
+    print(f"Validation Accuracy: {val_acc*100:.2f}%")
+    print(f"Validation Loss: {val_loss:.4f}")
+    
+    # Plot training history
+    plt.figure(figsize=(14, 5))
+    
+    plt.subplot(1, 2, 1)
+    plt.plot(history['accuracy'], label='Train Accuracy', linewidth=2)
+    plt.plot(history['val_accuracy'], label='Val Accuracy', linewidth=2)
+    plt.axvline(x=25, color='r', linestyle='--', alpha=0.5, label='Fine-tuning starts')
+    plt.title('Model Accuracy', fontsize=14, fontweight='bold')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    
+    plt.subplot(1, 2, 2)
+    plt.plot(history['loss'], label='Train Loss', linewidth=2)
+    plt.plot(history['val_loss'], label='Val Loss', linewidth=2)
+    plt.axvline(x=25, color='r', linestyle='--', alpha=0.5, label='Fine-tuning starts')
+    plt.title('Model Loss', fontsize=14, fontweight='bold')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(HISTORY_PLOT_PATH, dpi=150)
+    print(f"\n📊 Training history saved to {HISTORY_PLOT_PATH}")
+    
+    return model, history
 
 if __name__ == "__main__":
-    main()
+    try:
+        model, history = main()
+        print("\n🎉 Training completed successfully!")
+        print("\n💡 Model Details:")
+        print("   - Architecture: MobileNetV2 (memory-efficient)")
+        print("   - Expected accuracy: 70-85% (depends on data quality)")
+        print("   - Model saved to: emotion_model_mobilenet.h5")
+        print("\n📝 Next Steps:")
+        print("   1. Check training_history_mobilenet.png for learning curves")
+        print("   2. Update your live detection script to use 'emotion_model_mobilenet.h5'")
+        print("   3. If accuracy is low, consider collecting more diverse training data")
+    except Exception as e:
+        print(f"\n❌ Error during training: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
