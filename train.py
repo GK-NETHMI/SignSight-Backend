@@ -178,7 +178,7 @@ def main():
         )
     ]
     
-    # Train
+   
     print("\n🔥 Training phase 1: Frozen base model...")
     start_time = datetime.now()
     
@@ -190,15 +190,14 @@ def main():
         verbose=1
     )
     
-    # Fine-tune: unfreeze last layers
+ 
     print("\n🔥 Training phase 2: Fine-tuning...")
     base_model.trainable = True
-    
-    # Freeze all except last 20 layers
+   
     for layer in base_model.layers[:-20]:
         layer.trainable = False
     
-    # Recompile with lower learning rate
+   
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=INITIAL_LR/10),
         loss='sparse_categorical_crossentropy',
@@ -216,7 +215,7 @@ def main():
     duration = datetime.now() - start_time
     print(f"\n✅ Training completed in {duration}")
     
-    # Combine histories
+   
     history = {
         'accuracy': history_phase1.history['accuracy'] + history_phase2.history['accuracy'],
         'val_accuracy': history_phase1.history['val_accuracy'] + history_phase2.history['val_accuracy'],
@@ -224,14 +223,14 @@ def main():
         'val_loss': history_phase1.history['val_loss'] + history_phase2.history['val_loss']
     }
     
-    # Clear memory and reload best model
+  
     del model
     tf.keras.backend.clear_session()
     
     print("\n📈 Loading best model for evaluation...")
     model = keras.models.load_model(MODEL_SAVE_PATH)
     
-    # Evaluate
+  
     print("Evaluating on validation set...")
     val_loss, val_acc = model.evaluate(X_val, y_val, batch_size=BATCH_SIZE, verbose=0)
     
@@ -239,7 +238,7 @@ def main():
     print(f"Validation Accuracy: {val_acc*100:.2f}%")
     print(f"Validation Loss: {val_loss:.4f}")
     
-    # Plot training history
+    
     plt.figure(figsize=(14, 5))
     
     plt.subplot(1, 2, 1)
