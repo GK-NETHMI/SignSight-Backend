@@ -74,6 +74,28 @@ def text_to_sign():
     response = get_dummy_sign_response()
     return jsonify({"sign_output": response, "filename": filename}), 200
 
+# Error handlers
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    """Handle file size too large error"""
+    return jsonify({"error": "File too large. Maximum size is 16MB"}), 413
+
+@app.errorhandler(404)
+def not_found(error):
+    """Handle 404 errors"""
+    return jsonify({"error": "Endpoint not found"}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle internal server errors"""
+    return jsonify({"error": "Internal server error"}), 500
+
+# Health check endpoint
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for monitoring"""
+    return jsonify({"status": "healthy", "message": "Flask backend is running"}), 200
+
 if __name__ == '__main__':
     app.run(debug=True)
 
