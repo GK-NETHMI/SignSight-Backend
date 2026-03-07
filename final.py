@@ -11,7 +11,7 @@ from datetime import datetime
 from collections import defaultdict
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from tensorflow import keras
+from tensorflow import keras # type: ignore
 import mediapipe as mp
 
 from email_service import send_emotion_report_email

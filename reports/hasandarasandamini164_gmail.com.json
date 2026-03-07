@@ -1,66 +1,66 @@
 {
   "email": "hasandarasandamini164@gmail.com",
-  "date": "2026-03-06T22:13:40.748572",
-  "accuracy": 0.0,
+  "date": "2026-03-07T14:14:02.442505",
+  "accuracy": 66.67,
   "results": [
     {
-      "video": "happy_20260306221303.webm",
+      "video": "happy_20260307141249.webm",
       "expected": "Happy",
-      "dominant": "Unknown",
-      "consistency": 0,
+      "dominant": "Angry",
+      "consistency": 52.76,
       "distribution": {
-        "Angry": 0,
-        "Happy": 0,
-        "Neutral": 0,
-        "Sad": 0,
-        "Fear": 0
+        "Angry": 52.76,
+        "Happy": 3.68,
+        "Neutral": 37.42,
+        "Sad": 1.23,
+        "Fear": 4.91
       },
       "confidence": {
-        "Angry": 0,
-        "Happy": 0,
-        "Neutral": 0,
-        "Sad": 0,
-        "Fear": 0
+        "Angry": 0.874,
+        "Happy": 0.748,
+        "Neutral": 0.917,
+        "Sad": 0.516,
+        "Fear": 0.862
       }
     },
     {
-      "video": "sad_20260306221330.webm",
+      "video": "sad_20260307141312.webm",
       "expected": "Sad",
-      "dominant": "Neutral",
-      "consistency": 100.0,
+      "dominant": "Sad",
+      "consistency": 62.89,
       "distribution": {
-        "Angry": 0.0,
+        "Angry": 13.4,
         "Happy": 0.0,
-        "Neutral": 100.0,
-        "Sad": 0.0,
+        "Neutral": 23.71,
+        "Sad": 62.89,
         "Fear": 0.0
       },
       "confidence": {
-        "Angry": 0,
+        "Angry": 0.672,
         "Happy": 0,
-        "Neutral": 1.0,
-        "Sad": 0,
+        "Neutral": 0.828,
+        "Sad": 0.941,
         "Fear": 0
       }
     },
     {
-      "video": "angry_20260306221335.webm",
+      "video": "angry_20260307141328.webm",
       "expected": "Angry",
-      "dominant": "Unknown",
-      "consistency": 0,
+      "dominant": "Angry",
+      "consistency": 67.74,
       "distribution": {
-        "Angry": 0,
-        "Happy": 0,
-        "Neutral": 0,
-        "Sad": 0,
-        "Fear": 0
+        "Angry": 67.74,
+        "Happy": 0.0,
+        "Neutral": 14.52,
+        "Sad": 16.13,
+        "Fear": 1.61
       },
       "confidence": {
-        "Angry": 0,
+        "Angry": 0.861,
         "Happy": 0,
-        "Neutral": 0,
-        "Sad": 0,
-        "Fear": 0
+        "Neutral": 0.946,
+        "Sad": 0.82,
+        "Fear": 0.404
       }
     }
   ]
