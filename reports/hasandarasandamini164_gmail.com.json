@@ -1,10 +1,10 @@
 {
   "email": "hasandarasandamini164@gmail.com",
-  "date": "2026-03-07T11:13:21.812113",
+  "date": "2026-03-06T22:13:40.748572",
   "accuracy": 0.0,
   "results": [
     {
-      "video": "happy_20260307111222.webm",
+      "video": "happy_20260306221303.webm",
       "expected": "Happy",
       "dominant": "Unknown",
       "consistency": 0,
@@ -24,27 +24,27 @@
       }
     },
     {
-      "video": "sad_20260307111258.webm",
+      "video": "sad_20260306221330.webm",
       "expected": "Sad",
-      "dominant": "Unknown",
-      "consistency": 0,
+      "dominant": "Neutral",
+      "consistency": 100.0,
       "distribution": {
-        "Angry": 0,
-        "Happy": 0,
-        "Neutral": 0,
-        "Sad": 0,
-        "Fear": 0
+        "Angry": 0.0,
+        "Happy": 0.0,
+        "Neutral": 100.0,
+        "Sad": 0.0,
+        "Fear": 0.0
       },
       "confidence": {
         "Angry": 0,
         "Happy": 0,
-        "Neutral": 0,
+        "Neutral": 1.0,
         "Sad": 0,
         "Fear": 0
       }
     },
     {
-      "video": "angry_20260307111319.webm",
+      "video": "angry_20260306221335.webm",
       "expected": "Angry",
       "dominant": "Unknown",
       "consistency": 0,
