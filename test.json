@@ -1,0 +1,36 @@
+{
+  "level": "advanced",
+  "category_3": [
+    {
+      "question_id": "A-C3-1",
+      "correct_answer": "A",
+      "user_answer": "B",
+      "area": "emotions"
+    },
+    {
+      "question_id": "A-C3-2",
+      "correct_answer": "A",
+      "user_answer": "C",
+      "area": "actions"
+    },
+    {
+      "question_id": "A-C3-3",
+      "correct_answer": "A",
+      "user_answer": "B",
+      "area": "objects"
+    },
+    {
+      "question_id": "A-C3-4",
+      "correct_answer": "A",
+      "user_answer": "C",
+      "area": "numbers"
+    },
+    {
+      "question_id": "A-C3-5",
+      "correct_answer": "A",
+      "user_answer": "C",
+      "area": "emotions"
+    }
+  ],
+  "category_4": []
+}
