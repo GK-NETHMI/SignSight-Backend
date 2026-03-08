@@ -20,6 +20,7 @@ face_mesh = mp_face_mesh.FaceMesh(
 MAX_HEAD_ANGLE = 15
 MIN_EYE_OPENNESS = 0.2
 FRAME_SKIP = 2
+LOOK_AWAY_THRESHOLD = 5.0  # seconds
 
 def analyze_video(video_path):
     print("Analyzing:", video_path)
@@ -29,6 +30,7 @@ def analyze_video(video_path):
         return {"error": "Could not open video"}
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    effective_fps = fps / FRAME_SKIP
     size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
             int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
 
@@ -43,6 +45,8 @@ def analyze_video(video_path):
     RIGHT = [33, 160, 158, 133, 153, 144]
 
     frame_no = 0
+    look_away_streak_start = None
+    cheating_events = []
 
     while True:
         ret, frame = cap.read()
@@ -59,6 +63,8 @@ def analyze_video(video_path):
         if not results_face.multi_face_landmarks:
             results['face_not_detected_frames'] += 1
             results['total_frames'] += 1
+            if look_away_streak_start is None:
+                look_away_streak_start = results['total_frames']
             continue
 
         face_landmarks = results_face.multi_face_landmarks[0]
@@ -78,12 +84,25 @@ def analyze_video(video_path):
 
         eyes_open = left_ear > MIN_EYE_OPENNESS and right_ear > MIN_EYE_OPENNESS
 
+        results['total_frames'] += 1
+
         if eyes_open:
+            if look_away_streak_start is not None:
+                streak_duration = (results['total_frames'] - look_away_streak_start) / effective_fps
+                if streak_duration >= LOOK_AWAY_THRESHOLD:
+                    cheating_events.append(round(streak_duration, 1))
+                look_away_streak_start = None
             results['eye_contact_frames'] += 1
         else:
+            if look_away_streak_start is None:
+                look_away_streak_start = results['total_frames']
             results['look_away_frames'] += 1
 
-        results['total_frames'] += 1
+    # check if video ended during a look-away streak
+    if look_away_streak_start is not None:
+        streak_duration = (results['total_frames'] - look_away_streak_start) / effective_fps
+        if streak_duration >= LOOK_AWAY_THRESHOLD:
+            cheating_events.append(round(streak_duration, 1))
 
     cap.release()
 
@@ -103,6 +122,10 @@ def analyze_video(video_path):
         "face_not_detected": {
             "duration": int(results['face_not_detected_frames'] / fps),
             "percentage": "0%"
+        },
+        "cheating_events": {
+            "count": len(cheating_events),
+            "durations": cheating_events
         }
     }
 
