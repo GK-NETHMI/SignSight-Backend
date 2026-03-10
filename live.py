@@ -150,10 +150,10 @@ def main():
                         (0, 255, 0) if looking_forward else (0, 0, 255), 2)
 
             # Existing debug info
-            cv2.putText(frame, f"Yaw: {yaw:.2f}", (20, 100), font, 0.7, (255, 255, 255), 1)
-            cv2.putText(frame, f"Pitch: {pitch:.2f}", (20, 130), font, 0.7, (255, 255, 255), 1)
-            cv2.putText(frame, f"Left EAR: {left_ear:.2f}", (20, 160), font, 0.7, (255, 255, 255), 1)
-            cv2.putText(frame, f"Right EAR: {right_ear:.2f}", (20, 190), font, 0.7, (255, 255, 255), 1)
+            cv2.putText(frame, f"Yaw: {yaw:.2f}", (20, 100), font, 0.7, (0, 0, 0), 1)
+            cv2.putText(frame, f"Pitch: {pitch:.2f}", (20, 130), font, 0.7, (0, 0, 0), 1)
+            cv2.putText(frame, f"Left EAR: {left_ear:.2f}", (20, 160), font, 0.7, (0, 0, 0), 1)
+            cv2.putText(frame, f"Right EAR: {right_ear:.2f}", (20, 190), font, 0.7, (0, 0, 0), 1)
             
 
             # Draw warning if cheating detected
