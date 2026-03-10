@@ -1,7 +1,3 @@
-"""
-Audio and Video to Tamil Sign Language conversion routes
-Handles audio/video file uploads and converts them to TSL sign demonstrations
-"""
 from flask import Blueprint, request, jsonify, send_file, make_response
 import os
 import sys
@@ -18,10 +14,7 @@ def allowed_file(filename, allowed_extensions):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
 
 def build_signs_response(result):
-    """
-    Merge image_url directly into each sign item.
-    Since we're using Cloudinary, image_url is the full Cloudinary URL.
-    """
+
     sign_images_map = {
         s.get('sign_name', s.get('word', '')): s
         for s in result.get('sign_images', [])
@@ -226,10 +219,7 @@ def text_to_signs():
 
 @bp.route('/get-sign-image/<sign_name>', methods=['GET'])
 def get_sign_image(sign_name):
-    """
-    Redirect to Cloudinary URL for the sign GIF.
-    This endpoint is kept for backward compatibility.
-    """
+
     try:
         from flask import redirect
 
