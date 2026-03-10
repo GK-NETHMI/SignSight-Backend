@@ -364,6 +364,64 @@ def save_mentor_users():
         "mentorId": mentor_id,
         "userCount": len(user_ids)
     }), 200
+    
+    
+     # ================================================================
+# STUDENT
+# ================================================================   
+    
+@app.route("/api/students", methods=["POST"])
+def create_student():
+    data = request.json
+    username     = data.get("username")
+    name         = data.get("name")
+    email        = data.get("email")
+    age          = data.get("age")
+    gender       = data.get("gender")
+    firebase_uid = data.get("firebaseUid")
+
+    if not all([username, name, email, firebase_uid]):
+        return jsonify({"message": "Missing required fields"}), 400
+
+    existing = users_col.find_one({
+        "$or": [{"username": username}, {"email": email}]
+    })
+    if existing:
+        return jsonify({
+            "message": "Username already taken" if existing.get("username") == username else "Email already registered"
+        }), 409
+
+    result = users_col.insert_one({
+        "userId":      username,
+        "username":    username,
+        "name":        name,
+        "email":       email,
+        "age":         age,
+        "gender":      gender,
+        "firebaseUid": firebase_uid,
+        "createdAt":   datetime.datetime.utcnow()
+    })
+
+    return jsonify({
+        "_id":      str(result.inserted_id),
+        "username": username,
+        "name":     name,
+        "email":    email,
+    }), 201
+
+
+@app.route("/api/students/by-username/<username>", methods=["GET"])
+def get_student_by_username(username):
+    student = users_col.find_one({"username": username})
+    if not student:
+        return jsonify({"message": "Student not found"}), 404
+
+    return jsonify({
+        "_id":      str(student["_id"]),
+        "username": student.get("username"),
+        "name":     student.get("name"),
+        "email":    student.get("email"),
+    }), 200
 
 # ================================================================
 # RUN
@@ -371,3 +429,4 @@ def save_mentor_users():
 if __name__ == "__main__":
     print("🚀  SignSight Mentor Dashboard API — port 5050")
     app.run(debug=True, host="0.0.0.0", port=5050)
+    
