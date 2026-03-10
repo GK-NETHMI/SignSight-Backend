@@ -1,0 +1,16 @@
+Flask==3.0.0
+flask-cors==4.0.0
+python-dotenv==1.0.0
+numpy==1.24.3
+mediapipe
+tensorflow==2.15.0
+opencv-python==4.8.1.78
+scikit-learn
+scipy
+Pillow
+librosa==0.10.1
+soundfile
+pydub==0.25.1
+speechrecognition
+cloudinary==1.41.0
+
