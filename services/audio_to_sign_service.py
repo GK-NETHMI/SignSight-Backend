@@ -11,7 +11,12 @@ import subprocess
 import numpy as np
 import cv2
 from typing import Any, Dict, List, Optional
+import cloudinary
+import cloudinary.api
+from dotenv import load_dotenv
 
+# Load environment variables
+load_dotenv()
 
 # ── Constants matching training config ────────────────────────────────────────
 MAX_LEN          = 128   # padded sequence length
@@ -25,6 +30,7 @@ class AudioToSignService:
         self._project_root  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.sign_images_path = os.path.join(self._project_root, 'static', 'sign_images')
         self._models_dir   = os.path.join(self._project_root, 'models')
+
         # Preferred model filenames in order
         self._model_candidates = [
             'audio_to_sign_best.h5',
@@ -33,6 +39,9 @@ class AudioToSignService:
         ]
         self._norm_file     = os.path.join(self._models_dir, 'audio_to_sign_norm_stats.json')
 
+        # Initialize Cloudinary
+        self._init_cloudinary()
+
         os.makedirs(self.sign_images_path, exist_ok=True)
         os.makedirs(os.path.join(self._project_root, 'uploads'), exist_ok=True)
 
@@ -40,6 +49,18 @@ class AudioToSignService:
         self.model: Optional[Any] = self._load_ml_model()
         self.classes: List[str]   = self._norm.get('classes', []) if self._norm else []
         print(f"[Service] Classes ({len(self.classes)}): {self.classes}")
+        sys.stdout.flush()
+
+    def _init_cloudinary(self):
+        """Initialize Cloudinary configuration from environment variables."""
+        cloudinary.config(
+            cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+            api_key=os.getenv('CLOUDINARY_API_KEY'),
+            api_secret=os.getenv('CLOUDINARY_API_SECRET'),
+            secure=True
+        )
+        self.cloudinary_folder = os.getenv('CLOUDINARY_FOLDER', 'Sign_Sight_Assets')
+        print(f"[Service] ✓ Cloudinary configured: {os.getenv('CLOUDINARY_CLOUD_NAME')}/{self.cloudinary_folder}")
         sys.stdout.flush()
 
     # ── Loading ────────────────────────────────────────────────────────────────
@@ -125,7 +146,7 @@ class AudioToSignService:
     # ── Public API ─────────────────────────────────────────────────────────────
 
     def process_audio_to_signs(self, audio_path: str) -> Dict:
-        """WAV file → predicted sign label + image URL."""
+        """WAV file → predicted sign label + Cloudinary image URL."""
         try:
             wav_path = self._ensure_wav(audio_path)
             sign_label, confidence = self._predict_from_wav(wav_path)
@@ -135,12 +156,23 @@ class AudioToSignService:
             duration = self._get_audio_duration(audio_path)
 
             if sign_label:
-                signs = [{'word': sign_label, 'sign': sign_label,
-                          'confidence': round(confidence, 4), 'found': True}]
-                sign_images = [{'word': sign_label,
-                                'image_url': f'/api/audio-to-sign/get-sign-image/{sign_label}',
-                                'sign_name': sign_label,
-                                'confidence': round(confidence, 4)}]
+                # Get Cloudinary URL
+                cloudinary_url = self.get_sign_image_url(sign_label)
+
+                if cloudinary_url:
+                    signs = [{'word': sign_label, 'sign': sign_label,
+                              'confidence': round(confidence, 4), 'found': True}]
+                    sign_images = [{'word': sign_label,
+                                    'image_url': cloudinary_url,
+                                    'sign_name': sign_label,
+                                    'confidence': round(confidence, 4)}]
+                else:
+                    # GIF not found in Cloudinary
+                    print(f"[Service] ⚠️  Sign '{sign_label}' predicted but GIF not found in Cloudinary")
+                    sys.stdout.flush()
+                    signs = [{'word': sign_label, 'sign': sign_label,
+                              'confidence': round(confidence, 4), 'found': False}]
+                    sign_images = []
             else:
                 signs = [{'word': 'unknown', 'sign': 'unknown', 'found': False}]
                 sign_images = []
@@ -175,21 +207,30 @@ class AudioToSignService:
             clean = word.strip('.,!?;:')
 
             if clean in self.classes:
-                img_path = self.get_sign_image_path(clean)
+                cloudinary_url = self.get_sign_image_url(clean)
 
-                signs.append({
-                    'word': clean,
-                    'sign': clean,
-                    'confidence': 1.0,
-                    'found': True
-                })
+                if cloudinary_url:
+                    signs.append({
+                        'word': clean,
+                        'sign': clean,
+                        'confidence': 1.0,
+                        'found': True
+                    })
 
-                sign_images.append({
-                    'word': clean,
-                    'image_url': f'/api/audio-to-sign/get-sign-image/{clean}',
-                    'sign_name': clean,
-                    'confidence': 1.0
-                })
+                    sign_images.append({
+                        'word': clean,
+                        'image_url': cloudinary_url,
+                        'sign_name': clean,
+                        'confidence': 1.0
+                    })
+                else:
+                    # Word in classes but GIF not in Cloudinary
+                    signs.append({
+                        'word': clean,
+                        'sign': clean,
+                        'confidence': 1.0,
+                        'found': False
+                    })
 
             else:
                 signs.append({
@@ -211,12 +252,50 @@ class AudioToSignService:
             'word_count': len(words)
         }
 
+    def get_sign_image_url(self, sign_name: str) -> Optional[str]:
+        """
+        Get Cloudinary URL for sign GIF and validate it exists.
+        Returns None if the GIF doesn't exist in Cloudinary.
+        """
+        try:
+            # Construct the public_id for Cloudinary
+            # Note: Cloudinary public_id should NOT include extension, but your files were uploaded with .gif.gif
+            # So we try both patterns
+            public_ids_to_try = [
+                f"{self.cloudinary_folder}/{sign_name}.gif",  # Try with .gif.gif (your current upload)
+                f"{self.cloudinary_folder}/{sign_name}"       # Try without extension (correct way)
+            ]
+
+            for public_id in public_ids_to_try:
+                try:
+                    cloudinary.api.resource(public_id, resource_type="image")
+                    # If no exception, resource exists - return the URL
+                    cloudinary_url = cloudinary.CloudinaryImage(public_id).build_url(
+                        secure=True,
+                        resource_type="image"
+                    )
+                    print(f"[Service] ✓ Cloudinary GIF found: {public_id}")
+                    sys.stdout.flush()
+                    return cloudinary_url
+                except cloudinary.api.NotFound:
+                    continue
+
+            # Neither pattern found
+            print(f"[Service] ✗ Cloudinary GIF not found for: {sign_name} (tried {len(public_ids_to_try)} patterns)")
+            sys.stdout.flush()
+            return None
+
+        except Exception as e:
+            print(f"[Service] Cloudinary error for {sign_name}: {e}")
+            sys.stdout.flush()
+            return None
+
     def get_sign_image_path(self, sign_name: str) -> Optional[str]:
-        for ext in ('.gif', '.png', '.jpg', '.jpeg'):
-            path = os.path.join(self.sign_images_path, f"{sign_name}{ext}")
-            if os.path.exists(path):
-                return path
-        return None
+        """
+        Deprecated: Kept for backward compatibility.
+        Use get_sign_image_url() for Cloudinary URLs.
+        """
+        return self.get_sign_image_url(sign_name)
 
     # ── Core prediction pipeline ───────────────────────────────────────────────
 
@@ -320,19 +399,61 @@ class AudioToSignService:
     def _extract_audio_from_video(self, video_path: str) -> str:
         """Extract audio from video using ffmpeg."""
         audio_path = video_path.rsplit('.', 1)[0] + '_audio.wav'
+
+        print(f"[Service] Extracting audio from video: {video_path}")
+        sys.stdout.flush()
+
         try:
+            # First check if video has audio stream using ffprobe
+            probe = subprocess.run(
+                ['ffprobe', '-v', 'error', '-select_streams', 'a:0',
+                 '-show_entries', 'stream=codec_type', '-of', 'default=nw=1', video_path],
+                capture_output=True, text=True
+            )
+
+            if 'codec_type=audio' not in probe.stdout:
+                print(f"[Service] ⚠️  Video has no audio stream")
+                sys.stdout.flush()
+                raise Exception("Video file does not contain an audio stream. Please upload a video with audio or use an audio file directly.")
+
+            # Extract audio
             r = subprocess.run(
                 ['ffmpeg', '-y', '-i', video_path,
                  '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', audio_path],
                 capture_output=True, text=True
             )
+
+            print(f"[Service] FFmpeg extraction return code: {r.returncode}")
+            sys.stdout.flush()
+
             if r.returncode != 0:
-                raise Exception(f"ffmpeg: {r.stderr[-300:]}")
+                # Check if file was created anyway
+                if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
+                    print(f"[Service] Audio file created despite FFmpeg warning")
+                    sys.stdout.flush()
+                    return audio_path
+                print(f"[Service] FFmpeg stderr: {r.stderr[-300:]}")
+                sys.stdout.flush()
+                raise Exception(f"Failed to extract audio from video: {r.stderr[-200:]}")
+
+            print(f"[Service] ✓ Audio extracted successfully: {audio_path}")
+            sys.stdout.flush()
             return audio_path
-        except FileNotFoundError:
-            from pydub import AudioSegment
-            AudioSegment.from_file(video_path).export(audio_path, format='wav')
-            return audio_path
+
+        except FileNotFoundError as e:
+            print(f"[Service] FFmpeg/ffprobe not found, trying pydub fallback")
+            sys.stdout.flush()
+            try:
+                from pydub import AudioSegment
+                audio = AudioSegment.from_file(video_path)
+                audio.export(audio_path, format='wav', parameters=['-ar', '16000', '-ac', '1'])
+                return audio_path
+            except Exception as pydub_error:
+                raise Exception(f"Could not extract audio. FFmpeg not found and pydub failed: {pydub_error}")
+        except Exception as e:
+            print(f"[Service] Video extraction error: {e}")
+            sys.stdout.flush()
+            raise
 
     def _get_audio_duration(self, audio_path: str) -> float:
         try:

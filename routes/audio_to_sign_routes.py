@@ -20,7 +20,7 @@ def allowed_file(filename, allowed_extensions):
 def build_signs_response(result):
     """
     Merge image_url directly into each sign item.
-    image_url is ALWAYS a non-null string so the frontend can safely call .startsWith() on it.
+    Since we're using Cloudinary, image_url is the full Cloudinary URL.
     """
     sign_images_map = {
         s.get('sign_name', s.get('word', '')): s
@@ -30,9 +30,8 @@ def build_signs_response(result):
     for sign in result.get('signs', []):
         sign_name = sign.get('sign', 'unknown')
         img = sign_images_map.get(sign_name, sign_images_map.get(sign.get('word', ''), {}))
-        # Always provide a string image_url — never null
-        image_url = img.get('image_url', f'/api/audio-to-sign/get-sign-image/{sign_name}') \
-            if sign.get('found') else f'/api/audio-to-sign/get-sign-image/{sign_name}'
+        # Get Cloudinary URL from sign_images or construct placeholder
+        image_url = img.get('image_url', '') if sign.get('found') else ''
         signs_with_images.append({
             'sign': sign_name,
             'word': sign.get('word', sign_name),
@@ -82,18 +81,41 @@ def upload_audio():
 
         print(f"[upload-audio] Processing complete!")
         print(f"[upload-audio] Result: {result['text']}")
+
+        # Build response
+        signs_response = build_signs_response(result)
+
+        # Ensure we have at least one sign
+        if not signs_response or len(signs_response) == 0:
+            print("[upload-audio] WARNING: No signs in response!")
+            sys.stdout.flush()
+
+        response_data = {
+            'success': True,
+            'text': result['text'],
+            'signs': signs_response,
+            'duration': result.get('duration', 0),
+        }
+
+        print(f"[upload-audio] Response signs count: {len(response_data['signs'])}")
+        print(f"[upload-audio] First sign: {response_data['signs'][0] if response_data['signs'] else 'NONE'}")
+
+        # Import json to pretty print the response
+        import json
+        print(f"[upload-audio] JSON Response being sent:")
+        print(json.dumps(response_data, indent=2))
         print("="*70 + "\n")
         sys.stdout.flush()
 
         if os.path.exists(filepath):
             os.remove(filepath)
 
-        return jsonify({
-            'text': result['text'],
-            'signs': build_signs_response(result),
-            'duration': result.get('duration', 0),
-            'success': True
-        }), 200
+        response = jsonify(response_data)
+        print(f"[upload-audio] Response status: 200")
+        print(f"[upload-audio] Response headers: {dict(response.headers)}")
+        sys.stdout.flush()
+
+        return response, 200
 
     except Exception as e:
         print(f"[upload-audio] EXCEPTION: {e}")
@@ -103,43 +125,65 @@ def upload_audio():
 @bp.route('/upload-video', methods=['POST'])
 def upload_video():
     try:
+        print("\n" + "="*70)
+        print("[UPLOAD-VIDEO] NEW REQUEST")
+        print("="*70)
         print(f"[upload-video] Received files: {list(request.files.keys())}")
         print(f"[upload-video] Received form: {list(request.form.keys())}")
+        sys.stdout.flush()
 
         if 'video' not in request.files:
             print("[upload-video] ERROR: 'video' field missing from request")
+            sys.stdout.flush()
             return jsonify({'error': "No video file provided. Send file with field name 'video'", 'success': False}), 400
 
         file = request.files['video']
         print(f"[upload-video] Filename: '{file.filename}'")
+        sys.stdout.flush()
 
         if file.filename == '':
             print("[upload-video] ERROR: Empty filename")
+            sys.stdout.flush()
             return jsonify({'error': 'No file selected', 'success': False}), 400
 
         if not allowed_file(file.filename, ALLOWED_VIDEO_EXTENSIONS):
             print(f"[upload-video] ERROR: Invalid file type '{file.filename}'")
+            sys.stdout.flush()
             return jsonify({'error': f'Invalid file type. Allowed: {", ".join(ALLOWED_VIDEO_EXTENSIONS)}', 'success': False}), 400
 
         filename = secure_filename(file.filename)
         filepath = os.path.join('uploads', filename)
         file.save(filepath)
         print(f"[upload-video] Saved to: {filepath}")
+        print(f"[upload-video] Processing video file...")
+        sys.stdout.flush()
 
         result = audio_service.process_video_to_signs(filepath)
+
+        signs_response = build_signs_response(result)
+        response_data = {
+            'text': result['text'],
+            'signs': signs_response if signs_response else [],
+            'duration': result.get('duration', 0),
+            'video_info': result.get('video_info', {}),
+            'video': filepath if os.path.exists(filepath) else None,
+            'success': True
+        }
+
+        print(f"[upload-video] Processing complete!")
+        print(f"[upload-video] Result: {result['text']}")
+        print(f"[upload-video] Signs count: {len(response_data['signs'])}")
+        print("="*70 + "\n")
+        sys.stdout.flush()
+
         if os.path.exists(filepath):
             os.remove(filepath)
 
-        return jsonify({
-            'text': result['text'],
-            'signs': build_signs_response(result),
-            'duration': result.get('duration', 0),
-            'video_info': result.get('video_info', {}),
-            'success': True
-        }), 200
+        return jsonify(response_data), 200
 
     except Exception as e:
         print(f"[upload-video] EXCEPTION: {e}")
+        sys.stdout.flush()
         return jsonify({'error': str(e), 'success': False}), 500
 
 @bp.route('/text-to-signs', methods=['POST'])
@@ -182,34 +226,32 @@ def text_to_signs():
 
 @bp.route('/get-sign-image/<sign_name>', methods=['GET'])
 def get_sign_image(sign_name):
+    """
+    Redirect to Cloudinary URL for the sign GIF.
+    This endpoint is kept for backward compatibility.
+    """
     try:
-        image_path = audio_service.get_sign_image_path(sign_name)
+        from flask import redirect
 
-        if not image_path or not os.path.exists(image_path):
+        print(f"[get-sign-image] Request for: {sign_name}")
+        sys.stdout.flush()
+
+        cloudinary_url = audio_service.get_sign_image_url(sign_name)
+
+        if not cloudinary_url:
+            print(f"[get-sign-image] ERROR: Image not found in Cloudinary for '{sign_name}'")
+            sys.stdout.flush()
             return jsonify({'error': 'Sign image not found', 'success': False}), 404
 
-        # Detect correct mimetype from actual file extension
-        ext = image_path.rsplit('.', 1)[-1].lower()
-        mimetype_map = {
-            'gif':  'image/gif',
-            'png':  'image/png',
-            'jpg':  'image/jpeg',
-            'jpeg': 'image/jpeg',
-        }
-        mimetype = mimetype_map.get(ext, 'image/gif')
+        print(f"[get-sign-image] Redirecting to: {cloudinary_url}")
+        sys.stdout.flush()
 
-        # Send file inline (not as download) with no-cache so GIF animation always replays
-        response = make_response(send_file(
-            image_path,
-            mimetype=mimetype,
-            as_attachment=False,
-            conditional=False
-        ))
-        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-        response.headers['Pragma'] = 'no-cache'
-        return response
+        # Redirect to Cloudinary URL
+        return redirect(cloudinary_url, code=302)
 
     except Exception as e:
+        print(f"[get-sign-image] ERROR: {e}")
+        sys.stdout.flush()
         return jsonify({'error': str(e), 'success': False}), 500
 
 

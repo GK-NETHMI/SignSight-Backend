@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
 import logging
@@ -9,16 +9,28 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Configure logging - reduce noise from health checks
-log = logging.getLogger('werkzeug')
-log.setLevel(logging.WARNING)  # Only show warnings and errors, not INFO
+# Configure logging - show INFO for debugging, but filter out health checks
+class HealthCheckFilter(logging.Filter):
+    def filter(self, record):
+        # Hide GET / requests (health checks) but show everything else
+        return not ('GET / HTTP' in record.getMessage() and 'GET /' in record.getMessage())
+
+werkzeug_logger = logging.getLogger('werkzeug')
+werkzeug_logger.setLevel(logging.INFO)
+werkzeug_logger.addFilter(HealthCheckFilter())
+
+app.logger.setLevel(logging.INFO)
 
 # Configure CORS for TypeScript frontend
 CORS(app, resources={
     r"/*": {
         "origins": ["http://localhost:3000", "http://localhost:5173", "http://localhost:4200"],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
+        "allow_headers": ["Content-Type", "Authorization", "Accept"],
+        "expose_headers": ["Content-Type", "Content-Length"],
+        "supports_credentials": False,
+        "send_wildcard": False,
+        "max_age": 3600
     }
 })
 
@@ -37,8 +49,18 @@ from routes import audio_to_sign_routes
 # Register blueprints
 app.register_blueprint(audio_to_sign_routes.bp, url_prefix='/api/audio-to-sign')
 
+# Add CORS headers to all responses
+@app.after_request
+def after_request(response):
+    origin = request.headers.get('Origin', 'http://localhost:3000')
+    if origin in ["http://localhost:3000", "http://localhost:5173", "http://localhost:4200"]:
+        response.headers.add('Access-Control-Allow-Origin', origin)
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'false')
+    return response
+
 # Health check
-# Commented out - was for testing purposes, causing repeated GET requests
 # @app.route('/')
 # def health_check():
 #     return jsonify({
