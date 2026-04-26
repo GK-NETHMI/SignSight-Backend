@@ -1,0 +1,67 @@
+{
+  "email": "hasandarasandamini164@gmail.com",
+  "date": "2026-04-26T12:56:26.596696",
+  "accuracy": 66.67,
+  "results": [
+    {
+      "video": "happy_20260426125603.webm",
+      "expected": "Happy",
+      "dominant": "Happy",
+      "consistency": 64.56,
+      "distribution": {
+        "Angry": 10.13,
+        "Happy": 64.56,
+        "Neutral": 25.32,
+        "Sad": 0.0,
+        "Fear": 0.0
+      },
+      "confidence": {
+        "Angry": 0.793,
+        "Happy": 0.925,
+        "Neutral": 0.965,
+        "Sad": 0,
+        "Fear": 0
+      }
+    },
+    {
+      "video": "sad_20260426125608.webm",
+      "expected": "Sad",
+      "dominant": "Angry",
+      "consistency": 60.0,
+      "distribution": {
+        "Angry": 60.0,
+        "Happy": 40.0,
+        "Neutral": 0.0,
+        "Sad": 0.0,
+        "Fear": 0.0
+      },
+      "confidence": {
+        "Angry": 0.882,
+        "Happy": 0.903,
+        "Neutral": 0,
+        "Sad": 0,
+        "Fear": 0
+      }
+    },
+    {
+      "video": "angry_20260426125614.webm",
+      "expected": "Angry",
+      "dominant": "Angry",
+      "consistency": 84.62,
+      "distribution": {
+        "Angry": 84.62,
+        "Happy": 15.38,
+        "Neutral": 0.0,
+        "Sad": 0.0,
+        "Fear": 0.0
+      },
+      "confidence": {
+        "Angry": 0.917,
+        "Happy": 0.768,
+        "Neutral": 0,
+        "Sad": 0,
+        "Fear": 0
+      }
+    }
+  ]
+}
