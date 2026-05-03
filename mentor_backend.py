@@ -427,6 +427,6 @@ def get_student_by_username(username):
 # RUN
 # ================================================================
 if __name__ == "__main__":
-    print("🚀  SignSight Mentor Dashboard API — port 5050")
-    app.run(debug=True, host="0.0.0.0", port=5050)
+    print("🚀  SignSight Mentor Dashboard API — port 5080")
+    app.run(debug=True, host="0.0.0.0", port=5080)
     
