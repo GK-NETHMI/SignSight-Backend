@@ -1,46 +1,149 @@
-# Sign Sight (25-26J-404)
+# SignSight Backend
 
-**Empowering Accessibility: A Tamil Sign Language (TSL) Recognition with Learning and Emotion Detection System Using Machine Learning**
+## Run the server
 
-This repository contains the project "Sign Sight," a multi-functional platform developed for the SLIIT Faculty of Computing. It is designed to bridge communication gaps for the hearing-impaired community in Sri Lanka.
+```bash
+cd "/Users/farsithfawzer/Desktop/Farsith AudioToSign/SignSight-Backend"
+conda run -n base python app.py
+```
 
-## 🚩 About The Project
+> **Important:** Always use `conda run -n base python` — this is the only Python environment that has TensorFlow 2.20 with working `tf.keras`, which is required to load the model.
 
-In Sri Lanka, an estimated 390,000 hearing-impaired citizens (approximately 1.7% of the population) use Tamil Sign Language to communicate. However, existing digital tools primarily support English Sign Language and often lack real-time accuracy, interactivity, and essential features like audio-to-sign conversion or vocal training.
+## API — Base URL: `http://localhost:5080`
 
-Sign Sight is a multi-functional platform built to address this gap. It integrates learning, real-time detection, speech-to-sign conversion, and emotion detection training to create a single, holistic solution for education, communication, and rehabilitation.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/audio-to-sign/upload-audio` | Upload `.wav` file → sign prediction |
+| POST | `/api/audio-to-sign/upload-video` | Upload video → sign prediction |
+| POST | `/api/audio-to-sign/text-to-signs` | JSON `{"text":"..."}` → sign lookup |
+| GET  | `/api/audio-to-sign/get-sign-image/<sign_name>` | Returns sign GIF/image |
 
-## ✨ Key Features
+## Model
 
-The platform is composed of four main modules:
+- File: `models/audio_to_sign_best.h5`
+- Norm stats: `models/audio_to_sign_norm_stats.json`
+- Input: MFCC (40 coefficients + deltas + delta-deltas = 120 features), padded to 128 timesteps
+- Output: 21 Tamil sign classes: amma, anbalippu, apple, arambam, aruvi, illam, kaalai, kadal, kattadam, keylvi, master, mownam, mudivu, nandri, neram, nimmadhi, phone, samayal, thambi, udhavi, urakkam
 
-1.  **Interactive TSL Learning**
+## Sign images
 
-    - Provides structured, multi-level lessons for Tamil Sign Language, covering the alphabet, words, and phrase construction.
-    - Includes an TSL Dictionary for quick lookups.
-    - Features an evaluation system with randomized MCQ and Intermediate level assessments (~Tier based questions) to test comprehension.
+Place GIF/PNG files in `static/sign_images/` named after each class:
+```
+static/sign_images/nandri.gif
+static/sign_images/amma.gif
+...
+```
+ - Audio/Video to Tamil Sign Language
 
-2.  **Dynamic Real-Time Sign Detection**
+**Audio & Video to TSL Conversion Module**
 
-    - Uses a webcam to capture user gestures in real-time.
-    - Extracts key points using MediaPipe Holistic.
-    - Provides instant sign language predictions using an LSTM-based machine learning model.
+This repository contains the backend API for the Audio/Video to Tamil Sign Language conversion component of the Sign Sight project.
 
-3.  **Audio & Video to TSL Conversion**
+## 🚩 About This Module
 
-    - Converts Tamil audio or video files into TSL sign demonstrations.
-    - The system processes audio, converts it to text, and then uses an ML model to predict and display the corresponding sign gestures.
+This module converts Tamil audio or video files into TSL (Tamil Sign Language) sign demonstrations:
+- Processes audio/video files to extract Tamil speech
+- Converts speech to text using speech recognition
+- Uses a trained ML model to predict corresponding sign gestures
+- Serves sign language images/GIFs for visualization
 
-4.  **Emotion Alert System**
-    - Specifically designed for cochlear-implanted children (ages 3-5).
-    - Detects the child's Face and voice via video, provides real-time analysis of Emotional characteristics.
-    - Uses a Random Forest model to understand and respond by the respective TSL and provide adaptive emotion-based learning.
+## 🎯 Core Features
 
-## ⚙️ System Architecture
+1. **Audio Processing**: Upload audio files (mp3, wav, etc.) and convert Tamil speech to text
+2. **Video Processing**: Extract audio from videos and process similarly
+3. **ML Model Integration**: Predict sign language from Tamil text using your trained model
+4. **Sign Image Retrieval**: Serve sign language images/GIFs based on model predictions
 
-The system operates with a user interacting with a web interface. Inputs (Webcam, Text, Audio) are sent to a central Backend API, which orchestrates four primary services and communicates with a SQL database.
+## 🚀 Quick Start
 
-- **Learning System:** Manages lessons, MCQs, and Text-to-Sign interpretation.
-- **Audio to Sign Conversion:** Handles audio-to-text and text-to-sign image conversion.
-- **Emotion Alert System:** Manages voice input, preprocessing, and accuracy assessment.
-- **Dynamic Sign Detection:** Processes webcam input through an LSTM model for Emotional gesture recognition.
+### Prerequisites
+
+- Python 3.8+
+- pip
+- Your trained ML model for Tamil sign language
+
+### Installation
+
+```bash
+# Navigate to the repository
+cd SignSight-Backend
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Create necessary directories
+mkdir -p uploads models static/sign_images
+
+# Copy environment file
+cp .env.example .env
+```
+
+### Add Your ML Model
+
+1. Place your trained model in the `models/` directory
+2. Update `services/audio_to_sign_service.py` to load your model (see API_DOCUMENTATION.md)
+3. Add sign language images to `static/sign_images/`
+
+### Run the Server
+
+```bash
+python app.py
+```
+
+Server will start at `http://localhost:5000`
+
+## 📚 API Endpoints
+
+### 1. Upload Audio
+```
+POST /api/audio-to-sign/upload-audio
+```
+Upload audio file and get sign language predictions
+
+### 2. Upload Video
+```
+POST /api/audio-to-sign/upload-video
+```
+Upload video file and get sign language predictions
+
+### 3. Text to Signs
+```
+POST /api/audio-to-sign/text-to-signs
+```
+Convert Tamil text directly to sign language
+
+### 4. Get Sign Image
+```
+GET /api/audio-to-sign/get-sign-image/{sign_name}
+```
+Retrieve sign language image/gif
+
+## 🔧 Configuration
+
+The backend supports CORS for these frontend origins:
+- http://localhost:3000 (React)
+- http://localhost:5173 (Vite)
+- http://localhost:4200 (Angular)
+
+## 📖 Full Documentation
+
+See [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) for:
+- Complete API reference
+- ML model integration guide
+- Frontend connection examples (TypeScript)
+- Error handling
+- Testing examples
+
+## 🧪 Testing
+
+```bash
+python test_api.py
+```
+
+## 📝 What You Need to Replace
+
+1. **ML Model**: Place your trained model in `models/` and update loading logic
+2. **Prediction Logic**: Update `_predict_sign_from_model()` method with your model's prediction code
+3. **Sign Images**: Add Tamil sign language images/GIFs to `static/sign_images/`
+
+See API_DOCUMENTATION.md for detailed instructions.

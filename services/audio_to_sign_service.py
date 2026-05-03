@@ -22,7 +22,7 @@ load_dotenv()
 MAX_LEN          = 128   # padded sequence length
 N_MFCC           = 40    # number of MFCC coefficients
 ADD_DELTAS       = True  # training used delta + delta-delta features  → 40×3 = 120
-CONFIDENCE_THRESHOLD = 0.0
+CONFIDENCE_THRESHOLD = 0.4
 
 
 class AudioToSignService:

@@ -3,6 +3,9 @@ import os
 import sys
 from werkzeug.utils import secure_filename
 from services.audio_to_sign_service import AudioToSignService
+import cloudinary
+import cloudinary.uploader
+from cloudinary import CloudinaryVideo  # optional, we use cloudinary.CloudinaryVideo below
 
 bp = Blueprint('audio_to_sign', __name__)
 audio_service = AudioToSignService()
@@ -144,33 +147,79 @@ def upload_video():
             sys.stdout.flush()
             return jsonify({'error': f'Invalid file type. Allowed: {", ".join(ALLOWED_VIDEO_EXTENSIONS)}', 'success': False}), 400
 
+        # Save uploaded file to uploads/
         filename = secure_filename(file.filename)
         filepath = os.path.join('uploads', filename)
         file.save(filepath)
         print(f"[upload-video] Saved to: {filepath}")
-        print(f"[upload-video] Processing video file...")
         sys.stdout.flush()
 
+        # Process the video to signs using existing pipeline
+        print(f"[upload-video] Processing video file...")
+        sys.stdout.flush()
         result = audio_service.process_video_to_signs(filepath)
 
+        # Build sign responses (existing helper)
         signs_response = build_signs_response(result)
+
+        # Read requested size from form (small|medium|large)
+        size_label = request.form.get('size', 'medium')
+        if size_label not in ('small', 'medium', 'large'):
+            size_label = 'medium'
+
+        # Map size to width (pixels)
+        SIZE_MAP = {'small': 320, 'medium': 640, 'large': 1280}
+        target_width = SIZE_MAP.get(size_label, 640)
+
+        # Upload the original video to Cloudinary as a video resource
+        video_url_to_return = None
+        try:
+            # Upload as video resource
+            upload_res = cloudinary.uploader.upload(
+                filepath,
+                resource_type='video',
+                folder=audio_service.cloudinary_folder
+            )
+            public_id = upload_res.get('public_id')
+            secure_url = upload_res.get('secure_url')
+            print(f"[upload-video] Cloudinary upload OK: public_id={public_id} url={secure_url}")
+            sys.stdout.flush()
+
+            # Build a transformed Cloudinary URL scaled to the requested width
+            # Use build_url on CloudinaryVideo to ensure resource_type='video'
+            video_url_to_return = cloudinary.CloudinaryVideo(public_id).build_url(
+                transformation={'width': target_width, 'crop': 'scale'},
+                resource_type='video',
+                secure=True
+            )
+
+        except Exception as cloud_err:
+            # If Cloudinary upload fails, log and fallback (return None or local path if you can serve it)
+            print(f"[upload-video] Cloudinary upload failed: {cloud_err}")
+            sys.stdout.flush()
+            video_url_to_return = None
+
         response_data = {
-            'text': result['text'],
+            'text': result.get('text', ''),
             'signs': signs_response if signs_response else [],
             'duration': result.get('duration', 0),
             'video_info': result.get('video_info', {}),
-            'video': filepath if os.path.exists(filepath) else None,
+            'video_url': video_url_to_return,   # may be None if upload failed
             'success': True
         }
 
         print(f"[upload-video] Processing complete!")
-        print(f"[upload-video] Result: {result['text']}")
+        print(f"[upload-video] Result: {result.get('text')}")
         print(f"[upload-video] Signs count: {len(response_data['signs'])}")
         print("="*70 + "\n")
         sys.stdout.flush()
 
-        if os.path.exists(filepath):
-            os.remove(filepath)
+        # Clean up local upload file
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        except Exception:
+            pass
 
         return jsonify(response_data), 200
 
