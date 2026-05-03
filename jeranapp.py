@@ -95,9 +95,9 @@ try:
     model = load_model(MODEL_PATH, compile=False)
     scaler = joblib.load(SCALER_PATH)
     pca = joblib.load(PCA_PATH)
-    print("✅ Model, Scaler & PCA Loaded Successfully!")
+    print("[OK] Model, Scaler & PCA loaded successfully.")
 except Exception as e:
-    print(f"❌ Model Loading Failed: {e}")
+    print(f"[ERROR] Model loading failed: {e}")
     traceback.print_exc()
 
 # =========================
@@ -303,7 +303,7 @@ def webcam_predict():
 
 if __name__ == '__main__':
     print("="*70)
-    print("🚀 SignSight Backend Running!")
-    print(f"Model Loaded : {'✅ Yes' if model else '❌ No'}")
+    print("SignSight backend running.")
+    print(f"Model loaded: {'yes' if model else 'no'}")
     print("="*70)
     app.run(debug=True, host='0.0.0.0', port=5000)

@@ -1,0 +1,17 @@
+# Flask API — used by app.py and jeranapp.py
+flask==2.3.3
+flask-cors==4.0.0
+Werkzeug==2.3.7
+
+# Sign-language inference — jeranapp.py
+tensorflow==2.12.0
+opencv-python==4.8.1.78
+mediapipe==0.10.7
+# TensorFlow / tensorflow-intel 2.12 on Windows requires numpy<1.24 (cannot use 1.24+ or 2.x with this TF).
+numpy>=1.22.0,<1.24.0
+scikit-learn==1.3.2
+joblib==1.3.2
+Pillow==10.2.0
+
+# Pin below 4.x for tensorflow==2.12 + mediapipe 0.10.x stability on Windows
+protobuf==3.20.3
