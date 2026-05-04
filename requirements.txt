@@ -5,13 +5,22 @@ Werkzeug==2.3.7
 
 # Sign-language inference — jeranapp.py
 tensorflow==2.12.0
+# If you run a newer TensorFlow (2.13+) with legacy Keras enabled, install: pip install tf-keras
 opencv-python==4.8.1.78
 mediapipe==0.10.7
 # TensorFlow / tensorflow-intel 2.12 on Windows requires numpy<1.24 (cannot use 1.24+ or 2.x with this TF).
-numpy>=1.22.0,<1.24.0
+# Newer SciPy / wheels may `import numpy._core` (added in NumPy 1.26.1). With numpy<1.24 that fails — pin SciPy.
+numpy==1.23.5
+# Pin below 1.13: SciPy 1.13+ often imports numpy._core (NumPy 1.26.1+), which breaks numpy<1.24 + TF 2.12.
+scipy==1.11.4
 scikit-learn==1.3.2
 joblib==1.3.2
 Pillow==10.2.0
+
+# Temporal Convolutional Networks — jeranapp registers keras-tcn by default (`JERAN_TCN_LIBRARY` can override).
+keras-tcn>=0.3.5
+tcn>=3.7.5
+h5py>=3.8.0
 
 # Pin below 4.x for tensorflow==2.12 + mediapipe 0.10.x stability on Windows
 protobuf==3.20.3
