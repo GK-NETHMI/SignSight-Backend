@@ -56,6 +56,7 @@ import cv2
 import joblib
 import sys
 import uuid
+import re
 import traceback
 import base64
 from io import BytesIO
@@ -143,7 +144,11 @@ _VARIANT_SPECS = {
         "label": "TCN",
         "subdir": "tcn",
         "sequence_length": 45,
+        # Keras-3 ``Model.save_weights(..., filepath='*.weights.h5')`` bundles under top-level ``layers/``.
+        # That layout is not loadable via stock ``load_weights_only`` on nested ``tcn/residual_block_*`` —
+        # we rebuild + assign manually (see ``_load_keras_file``).
         "model_candidates": [
+            "tcn_model_best.weights.h5",
             "tcn_weights_only.h5",
             "tcn_model_best.h5",
             "tcn_full.keras",
@@ -152,7 +157,7 @@ _VARIANT_SPECS = {
         ],
         "scaler_candidates": ["scaler_tcn.pkl"],
         "pca_candidates": ["pca_tcn.pkl"],
-        "pca_required": True,
+        "pca_required": False,
         "scaler_required": True,
         "fallback_training_dir": False,
     },
@@ -166,6 +171,9 @@ _STACK_CACHE_SCHEMA = 6
 _LAST_REQUEST_LOG_VARIANT = {}  # throttle identical logs per-route if needed — kept simple below
 
 FEATURE_DIM = 1662  # Mediapipe holistic vector length; must exist before bootstrap load_stack()
+
+# Keras SavedModel / keras-3 ``.weights.h5`` variable names like ``dense/kernel:0`` ↔ ``layers/dense/vars/0``.
+_KERAS_VARS_H5_LAYER_RE = re.compile(r"^(.*)/(kernel|recurrent_kernel|bias):(\d+)$")
 
 
 def _normalize_variant(raw):
@@ -188,27 +196,38 @@ def _first_existing(directory, candidates):
     return None, None
 
 
-def _keras_custom_objects_for_variant(norm):
-    """TCN checkpoints serialize a ``TCN`` custom layer — register exactly one class to avoid deserialization bugs."""
-    custom = {}
-    if norm != "tcn":
-        return custom
-    pref = os.environ.get("JERAN_TCN_LIBRARY", "").strip().lower().replace("_", "-")
+def _enumerate_tcn_layer_implementations():
+    """Return ``[(label, TCNClass), ...]`` with duplicate module paths deduped by ``id``."""
 
-    impls = []
+    raw = []
+    # ``keras-tcn`` 3.x ships the layer as top-level ``tcn`` (``from tcn import TCN``).
+    try:
+        from tcn import TCN as TCN_tcn
+
+        raw.append(("tcn", TCN_tcn))
+    except ImportError:
+        pass
+    # Older wheels / alternate layouts.
     try:
         from keras_tcn.tcn import TCN as TCN_kt
 
-        impls.append(("keras-tcn", TCN_kt))
-    except ImportError:
-        pass
-    try:
-        from tcn import TCN as TCN_pkg
-
-        impls.append(("tcn", TCN_pkg))
+        raw.append(("keras-tcn", TCN_kt))
     except ImportError:
         pass
 
+    seen = set()
+    out = []
+    for label, cls in raw:
+        cid = id(cls)
+        if cid in seen:
+            continue
+        seen.add(cid)
+        out.append((label, cls))
+    return out
+
+
+def _select_tcn_class_for_env(impls):
+    pref = os.environ.get("JERAN_TCN_LIBRARY", "").strip().lower().replace("_", "-")
     choice = None
     if pref in ("tcn", "tcn-package"):
         choice = next((x for x in impls if x[0] == "tcn"), None)
@@ -216,20 +235,32 @@ def _keras_custom_objects_for_variant(norm):
         choice = next((x for x in impls if x[0] == "keras-tcn"), None)
     if choice is None and impls:
         choice = impls[0]
+    return choice
+
+
+def _keras_custom_objects_for_variant(norm):
+    """TCN checkpoints serialize a ``TCN`` custom layer — register exactly one class to avoid deserialization bugs."""
+    custom = {}
+    if norm != "tcn":
+        return custom
+
+    impls = _enumerate_tcn_layer_implementations()
+    choice = _select_tcn_class_for_env(impls)
 
     if choice:
         label, cls = choice
         custom["TCN"] = cls
         print(f"[config] TCN layer class registered ({label}): {cls.__module__}.{cls.__name__}")
+        pref = os.environ.get("JERAN_TCN_LIBRARY", "").strip()
         if len(impls) > 1 and not pref:
             other = [x[0] for x in impls if x[0] != label]
             print(
-                f"[config] tip: both {other} and '{label}' are installed; using '{label}' only. "
-                "Set JERAN_TCN_LIBRARY=keras-tcn or JERAN_TCN_LIBRARY=tcn to force the other."
+                f"[config] tip: multiple TCN backends available ({other}); using '{label}'. "
+                "Set JERAN_TCN_LIBRARY=keras-tcn or JERAN_TCN_LIBRARY=tcn to force."
             )
     else:
         print(
-            "[config] WARN: variant=tcn but neither 'keras-tcn' nor 'tcn' is importable - "
+            "[config] WARN: variant=tcn but neither ``tcn`` nor ``keras_tcn.tcn`` is importable - "
             "pip install keras-tcn"
         )
     return custom
@@ -382,6 +413,129 @@ def _first_plausible_model_file(directory, candidates):
     return None, None
 
 
+def _is_tcn_keras_layers_bundle_h5(path):
+    """Detect keras-3 style ``layers/tcn/residual_block_*/…`` checkpoints (``.weights.h5``)."""
+
+    lp = path.lower()
+    if not lp.endswith(".weights.h5"):
+        return False
+    try:
+        import h5py
+
+        with h5py.File(path, "r") as f:
+            if "layers" not in f:
+                return False
+            ly = f["layers"]
+            if "tcn" not in ly:
+                return False
+            tcn = ly["tcn"]
+            keys = getattr(tcn, "keys", lambda: ())()
+            return any(str(k).startswith("residual_block_") for k in keys)
+    except Exception:
+        return False
+
+
+def _infer_tcn_bundle_layout(path):
+    """Read conv / dense shapes from HDF5 ``layers/`` subtree (no Python training code required).
+
+    Returns:
+        tuple ``(in_feats, nb_filters, kernel_size, hidden_units, num_classes, dilations_tuple)``
+    """
+
+    import h5py
+
+    with h5py.File(path, "r") as f:
+        r = f["layers"]
+        cw = np.array(r["tcn"]["residual_block_0"]["conv1D_0"]["vars"]["0"])
+        kernel_size = int(cw.shape[0])
+        in_feats = int(cw.shape[1])
+        nb_filters = int(cw.shape[2])
+
+        dk = np.array(r["dense"]["vars"]["0"])
+        hidden = int(dk.shape[1])
+        biases = np.array(r["dense_1"]["vars"]["1"])
+        n_classes = int(biases.shape[0])
+
+        rb_keys = [k for k in r["tcn"].keys() if str(k).startswith("residual_block_")]
+        n_blocks = len(rb_keys)
+        if n_blocks < 1:
+            raise RuntimeError("TCN bundle has no residual_block_* groups.")
+        dilations = tuple(1 << i for i in range(n_blocks))
+
+    return in_feats, nb_filters, kernel_size, hidden, n_classes, dilations
+
+
+def _assign_keras_named_weights_from_layers_h5(model, filepath):
+    """Attach weights when ``layers/<layer_path>/vars/{0,…}`` keys match ``model.weights[*].name``."""
+
+    import h5py
+
+    errs = []
+    with h5py.File(filepath, "r") as f:
+        root = f["layers"]
+        for v in model.weights:
+            m = _KERAS_VARS_H5_LAYER_RE.match(v.name)
+            if not m:
+                errs.append(f"unexpected variable name: {v.name!r}")
+                continue
+            rel, slot, _ = m.groups()
+            idx = "1" if slot == "bias" else "0"
+            grp_path = rel.replace("\\", "/")
+            try:
+                ds = root[grp_path]["vars"][idx]
+                arr = np.asarray(ds)
+            except Exception as ex:
+                errs.append(f"missing HDF5 tensors for {v.name}: {ex}")
+                continue
+            if tuple(arr.shape) != tuple(v.shape):
+                errs.append(f"shape mismatch {v.name}: model {v.shape} vs file {arr.shape}")
+                continue
+            v.assign(arr)
+    return errs
+
+
+def _build_and_load_tcn_from_layers_bundle_weights_h5(path):
+    """Rebuild a functional TCN classifier and load ``*.weights.h5`` produced by keras-3 checkpoints."""
+
+    choice = _select_tcn_class_for_env(_enumerate_tcn_layer_implementations())
+    if choice is None:
+        raise RuntimeError(
+            "TCN bundle checkpoint requires ``tcn`` (from ``keras-tcn`` >= 3.x) or legacy ``keras_tcn`` — "
+            "install: pip install keras-tcn"
+        )
+    _, TCN_cls = choice
+
+    lay = _infer_tcn_bundle_layout(path)
+    in_feats, nb_filters, kernel_size, hidden, n_classes, dilations = lay
+
+    spec = _VARIANT_SPECS["tcn"]
+    seq_hint = int(spec["sequence_length"] or 45)
+    inp = tf.keras.layers.Input(shape=(seq_hint, in_feats), name="input_sequence")
+    x = tf.keras.layers.GaussianNoise(0.0, name="gaussian_noise")(inp)
+    x = TCN_cls(
+        return_sequences=False,
+        nb_filters=nb_filters,
+        kernel_size=kernel_size,
+        dilations=dilations,
+        use_skip_connections=False,
+        dropout_rate=0.0,
+        name="tcn",
+    )(x)
+    x = tf.keras.layers.Dense(hidden, activation="relu", name="dense")(x)
+    out = tf.keras.layers.Dense(n_classes, activation="softmax", name="dense_1")(x)
+    mdl = tf.keras.models.Model(inp, out, name="tcn_inference_bundle")
+
+    load_errs = _assign_keras_named_weights_from_layers_h5(mdl, path)
+    if load_errs:
+        raise RuntimeError("TCN manual weight load incomplete: " + "; ".join(load_errs[:6]))
+
+    print(
+        f"[MODEL LOAD OK] tcn: keras bundle .weights.h5 - rebuilt graph "
+        f"(in={in_feats}, filters={nb_filters}, seq_hint={seq_hint}, classes={n_classes}) from {path!r}"
+    )
+    return mdl
+
+
 def _build_tcn_placeholder_functional():
     """Same graph as ``scripts/bootstrap_tcn_placeholder.py`` (45, 256) -> 15-class softmax.
 
@@ -415,6 +569,12 @@ def _load_keras_file(path, norm):
         ok, diag = _keras_h5_file_plausibility(path)
         if not ok:
             raise RuntimeError(diag) from None
+
+    if norm == "tcn" and lp.endswith(".weights.h5") and _is_tcn_keras_layers_bundle_h5(path):
+        try:
+            return _build_and_load_tcn_from_layers_bundle_weights_h5(path)
+        except Exception as ex:
+            raise RuntimeError(f"TCN keras `layers/` bundle load failed for {path!r}: {ex}") from ex
 
     base = os.path.basename(path)
     if norm == "tcn" and base.lower() == "tcn_weights_only.h5":
@@ -626,9 +786,40 @@ def load_stack(norm):
         print(f"[MODEL LOAD TRY] variant={norm} path={paths['model_path']}")
         mdl = _load_keras_file(paths["model_path"], norm)
         scl_loaded = joblib.load(paths["scaler_path"]) if paths["scaler_path"] else None
-        pac_loaded = joblib.load(paths["pca_path"]) if paths["pca_path"] else None
 
         input_kind, rgb_hwc = _infer_input_kind(mdl)
+        try:
+            model_in_last = int(mdl.input_shape[-1])
+        except (TypeError, ValueError):
+            model_in_last = None
+
+        # Avoid ``joblib.load(pca_*.pkl)`` when PCA is never used: pickles from a newer
+        # scikit-learn can execute code that imports ``numpy._core``, which does not exist on
+        # NumPy <1.26 (required for tensorflow==2.12). TCN bundles here use full 1662-D input.
+        pac_loaded = None
+        if paths["pca_path"]:
+            load_pca = bool(spec.get("pca_required"))
+            if (
+                not load_pca
+                and norm == "tcn"
+                and input_kind == "keypoints"
+                and model_in_last not in (None, FEATURE_DIM)
+            ):
+                load_pca = True
+            if norm == "tcn" and input_kind == "keypoints" and model_in_last == FEATURE_DIM:
+                load_pca = False
+                print(
+                    f"[MODEL] variant=tcn: model expects {FEATURE_DIM}-D scaled landmarks; "
+                    f"skipping PCA pickle {paths['pca_name']!r} (avoids sklearn/numpy pin conflicts)"
+                )
+            if load_pca:
+                pac_loaded = joblib.load(paths["pca_path"])
+            elif paths["pca_path"] and not spec.get("pca_required"):
+                print(
+                    f"[MODEL] variant={norm}: optional PCA on disk ({paths['pca_name']!r}) not loaded "
+                    f"(model last dim={model_in_last})"
+                )
+
         seq_len = _resolve_sequence_length(norm, mdl, spec, paths)
 
         if input_kind == "rgb_stack":
@@ -969,8 +1160,8 @@ def _variant_setup_hints(norm, pst, spec):
         hints.append(f"Scaler missing under {pst['model_dir']} (need one of {spec['scaler_candidates']}).")
     if norm == "tcn":
         hints.append(
-            "TCN: install `pip install keras-tcn`; training must save a FULL model (.keras preferred), "
-            "not save_weights_only."
+            "TCN: pip install keras-tcn; a full .keras or .h5 export is easiest to load. "
+            "Keras-3 *.weights.h5 checkpoints with a top-level 'layers/tcn' tree are rebuilt automatically."
         )
     return hints
 
