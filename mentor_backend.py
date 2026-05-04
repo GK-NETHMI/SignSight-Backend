@@ -1,7 +1,7 @@
 import datetime
+import os
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from psutil import users
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 from bson.json_util import dumps, RELAXED_JSON_OPTIONS
@@ -490,6 +490,9 @@ def get_student_by_username(username):
 # RUN
 # ================================================================
 if __name__ == "__main__":
-    print("🚀  SignSight Mentor Dashboard API — port 5080")
-    app.run(debug=True, host="0.0.0.0", port=5080)
+    mentor_port = int(os.getenv("MENTOR_PORT", os.getenv("PORT", "5081")))
+    mentor_debug = os.getenv("FLASK_ENV", "development") == "development"
+    print(f"🚀  SignSight Mentor Dashboard API — port {mentor_port}")
+    app.run(debug=mentor_debug, host="0.0.0.0", port=mentor_port)
+
     

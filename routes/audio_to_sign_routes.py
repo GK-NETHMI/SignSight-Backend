@@ -3,9 +3,12 @@ import os
 import sys
 from werkzeug.utils import secure_filename
 from services.audio_to_sign_service import AudioToSignService
-import cloudinary
-import cloudinary.uploader
-from cloudinary import CloudinaryVideo  # optional, we use cloudinary.CloudinaryVideo below
+
+try:
+    import cloudinary
+    import cloudinary.uploader
+except Exception:
+    cloudinary = None
 
 bp = Blueprint('audio_to_sign', __name__)
 audio_service = AudioToSignService()
@@ -174,6 +177,9 @@ def upload_video():
         # Upload the original video to Cloudinary as a video resource
         video_url_to_return = None
         try:
+            # Skip upload if cloudinary not available
+            if cloudinary is None:
+                raise Exception("cloudinary package not available")
             # Upload as video resource
             upload_res = cloudinary.uploader.upload(
                 filepath,

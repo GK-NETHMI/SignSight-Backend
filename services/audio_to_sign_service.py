@@ -8,12 +8,26 @@ import os
 import sys
 import json
 import subprocess
-import numpy as np
-import cv2
 from typing import Any, Dict, List, Optional
-import cloudinary
-import cloudinary.api
 from dotenv import load_dotenv
+
+# Heavy optional dependencies: import them safely so the module can be imported
+# even if the environment doesn't have them (useful for CI / lightweight dev runs).
+try:
+    import numpy as np
+except Exception:
+    np = None
+
+try:
+    import cv2
+except Exception:
+    cv2 = None
+
+try:
+    import cloudinary
+    import cloudinary.api
+except Exception:
+    cloudinary = None
 
 # Load environment variables
 load_dotenv()
@@ -53,6 +67,13 @@ class AudioToSignService:
 
     def _init_cloudinary(self):
         """Initialize Cloudinary configuration from environment variables."""
+        # If cloudinary package isn't available, gracefully disable cloudinary features
+        if cloudinary is None:
+            print("[Service] ⚠️  cloudinary package not available; Cloudinary features disabled")
+            sys.stdout.flush()
+            self.cloudinary_folder = os.getenv('CLOUDINARY_FOLDER', 'Sign_Sight_Assets')
+            return
+
         cloudinary.config(
             cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
             api_key=os.getenv('CLOUDINARY_API_KEY'),
@@ -257,6 +278,12 @@ class AudioToSignService:
         Get Cloudinary URL for sign GIF and validate it exists.
         Returns None if the GIF doesn't exist in Cloudinary.
         """
+        # If cloudinary package/config not available, return None
+        if cloudinary is None:
+            print(f"[Service] ⚠️  Cloudinary not available; cannot fetch image for: {sign_name}")
+            sys.stdout.flush()
+            return None
+
         try:
             # Construct the public_id for Cloudinary
             # Note: Cloudinary public_id should NOT include extension, but your files were uploaded with .gif.gif
@@ -277,7 +304,8 @@ class AudioToSignService:
                     print(f"[Service] ✓ Cloudinary GIF found: {public_id}")
                     sys.stdout.flush()
                     return cloudinary_url
-                except cloudinary.api.NotFound:
+                except Exception as e_res:
+                    # Resource not found or other API error — continue trying
                     continue
 
             # Neither pattern found
@@ -301,7 +329,11 @@ class AudioToSignService:
 
     def _predict_from_wav(self, wav_path: str):
         """Extract MFCCs, normalize, pad, run model → (label, confidence)."""
-        if self.model is None or self._norm is None:
+        # Ensure model, normalization stats and numpy are available
+        if self.model is None or self._norm is None or np is None:
+            if np is None:
+                print("[Service] ⚠️  numpy not available; prediction disabled")
+                sys.stdout.flush()
             return None, 0.0
         try:
             import librosa
@@ -463,6 +495,11 @@ class AudioToSignService:
             return 0.0
 
     def _get_video_info(self, video_path: str) -> Dict:
+        # If OpenCV is unavailable, return empty info
+        if cv2 is None:
+            print("[Service] ⚠️  OpenCV (cv2) not available; skipping video info extraction")
+            sys.stdout.flush()
+            return {}
         try:
             cap = cv2.VideoCapture(video_path)
             fps = cap.get(cv2.CAP_PROP_FPS)
