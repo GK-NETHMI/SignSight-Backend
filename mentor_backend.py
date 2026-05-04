@@ -10,10 +10,20 @@ from bson import ObjectId
 # ----------------------------------------------------------------
 # CONFIG  — identical to your dbConfig.py
 # ----------------------------------------------------------------
-MONGO_URI = (
-    "mongodb+srv://signsight8_db_user:IhafUkyQov1hzFdG@signsight.6fgqsty.mongodb.net/"
-    "?retryWrites=true&w=majority"
+# Prefer environment variable for credentials / cluster address. Fall back to the
+# previous hard-coded value only if MONGO_URI is not provided in the env.
+MONGO_URI = os.getenv(
+    "MONGO_URI",
+    (
+        "mongodb+srv://signsight8_db_user:IhafUkyQov1hzFdG@signsight.6fgqsty.mongodb.net/"
+        "?retryWrites=true&w=majority"
+    ),
 )
+
+# When set to 'false' the service will fail fast if it cannot reach MongoDB.
+# Set USE_DB_FALLBACK=true to keep the in-memory fallback behaviour used during
+# local development when a real MongoDB is not reachable.
+USE_DB_FALLBACK = os.getenv("USE_DB_FALLBACK", "true").lower() in ("1", "true", "yes")
 DB_NAME = "signsight"
 
 LEVELS = ["basic", "intermediate", "advanced"]
@@ -26,6 +36,8 @@ app  = Flask(__name__)
 CORS(app, origins="*")
 
 logging.basicConfig(level=logging.INFO)
+DB_CONNECTED = False
+USING_DB_FALLBACK = False
 
 # Attempt to connect to MongoDB; if it fails (e.g. missing DNS or credentials)
 # fall back to lightweight in-memory fake collections so the API can still run
@@ -36,16 +48,27 @@ try:
         server_api=ServerApi("1"),
         tls=True,
         tlsCAFile=certifi.where(),
-        serverSelectionTimeoutMS=8000
+        serverSelectionTimeoutMS=8000,
     )
-    db            = client[DB_NAME]
-    users_col     = db["users"]
-    attempts_col  = db["attempts"]
+    # Verify connectivity early with a ping (will raise on failure)
+    client.admin.command('ping')
+    db = client[DB_NAME]
+    users_col = db["users"]
+    attempts_col = db["attempts"]
     snapshots_col = db["progress_snapshots"]
-    mentors_col   = db["mentors"]
-    logging.info("Connected to MongoDB cluster")
+    mentors_col = db["mentors"]
+    logging.info("Connected to MongoDB cluster: %s", MONGO_URI)
+    DB_CONNECTED = True
+    USING_DB_FALLBACK = False
 except Exception as exc:
-    logging.warning("Could not connect to MongoDB, using in-memory fallbacks: %s", exc)
+    logging.error("MongoDB connection failed: %s", exc)
+    if not USE_DB_FALLBACK:
+        # Fail fast so deployment/CI surfaces configuration problems immediately
+        logging.error("USE_DB_FALLBACK is false — exiting due to DB connection failure")
+        raise
+    logging.warning("Falling back to in-memory collections because USE_DB_FALLBACK=%s", USE_DB_FALLBACK)
+    DB_CONNECTED = False
+    USING_DB_FALLBACK = True
 
     # Minimal in-memory collection / cursor implementations to keep endpoints working
     class FakeCursor(list):
@@ -105,6 +128,24 @@ except Exception as exc:
 def to_json(obj):
     """Serialize ObjectId / datetime for JSON."""
     return json.loads(dumps(obj, json_options=RELAXED_JSON_OPTIONS))
+
+
+@app.route('/api/admin/status', methods=['GET'])
+def admin_status():
+    """Return service status including DB connectivity (safe, masked)."""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(MONGO_URI)
+        host = parsed.hostname or ''
+    except Exception:
+        host = ''
+
+    return jsonify({
+        'dbConnected': bool(DB_CONNECTED),
+        'usingFallback': bool(USING_DB_FALLBACK),
+        'mongoHost': host,
+        'useDbFallbackEnv': USE_DB_FALLBACK
+    }), 200
 
 
 # ================================================================

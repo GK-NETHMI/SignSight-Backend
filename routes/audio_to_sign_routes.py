@@ -11,7 +11,14 @@ except Exception:
     cloudinary = None
 
 bp = Blueprint('audio_to_sign', __name__)
-audio_service = AudioToSignService()
+# Delay heavy service initialization until first request to avoid long startup time
+audio_service = None
+
+def get_audio_service():
+    global audio_service
+    if audio_service is None:
+        audio_service = AudioToSignService()
+    return audio_service
 
 ALLOWED_AUDIO_EXTENSIONS = {'wav'}
 ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'webm'}
@@ -76,7 +83,8 @@ def upload_audio():
         print(f"[upload-audio] Processing audio file...")
         sys.stdout.flush()
 
-        result = audio_service.process_audio_to_signs(filepath)
+        svc = get_audio_service()
+        result = svc.process_audio_to_signs(filepath)
 
         print(f"[upload-audio] Processing complete!")
         print(f"[upload-audio] Result: {result['text']}")
@@ -160,7 +168,8 @@ def upload_video():
         # Process the video to signs using existing pipeline
         print(f"[upload-video] Processing video file...")
         sys.stdout.flush()
-        result = audio_service.process_video_to_signs(filepath)
+        svc = get_audio_service()
+        result = svc.process_video_to_signs(filepath)
 
         # Build sign responses (existing helper)
         signs_response = build_signs_response(result)
@@ -257,7 +266,8 @@ def text_to_signs():
                 'success': False
             }), 400
 
-        result = audio_service.text_to_signs(text)
+        svc = get_audio_service()
+        result = svc.text_to_signs(text)
 
         return jsonify({
             'text': text,
@@ -281,7 +291,8 @@ def get_sign_image(sign_name):
         print(f"[get-sign-image] Request for: {sign_name}")
         sys.stdout.flush()
 
-        cloudinary_url = audio_service.get_sign_image_url(sign_name)
+        svc = get_audio_service()
+        cloudinary_url = svc.get_sign_image_url(sign_name)
 
         if not cloudinary_url:
             print(f"[get-sign-image] ERROR: Image not found in Cloudinary for '{sign_name}'")
