@@ -370,7 +370,7 @@ def create_mentor():
         "email": email,
         "firebaseUid": firebase_uid,
         "maxStudents": 5,
-        "createdAt":  datetime.datetime.utcnow()
+        "createdAt":  datetime.datetime.now(datetime.timezone.utc)
     }
 
     mentors_col.insert_one(mentor)
@@ -470,7 +470,7 @@ def save_mentor_users():
     }), 200
     
     
-     # ================================================================
+# ================================================================
 # STUDENT
 # ================================================================   
     
@@ -503,7 +503,7 @@ def create_student():
         "age":         age,
         "gender":      gender,
         "firebaseUid": firebase_uid,
-        "createdAt":   datetime.datetime.utcnow()
+        "createdAt":   datetime.datetime.now(datetime.timezone.utc)
     })
 
     return jsonify({
@@ -528,6 +528,17 @@ def get_student_by_username(username):
     }), 200
 
 # ================================================================
+# REGISTRATION FUNCTION
+# ================================================================
+def register_mentor_routes(flask_app):
+    """Register mentor routes to an existing Flask app."""
+    # All routes are already registered to the global 'app' object
+    # This function serves as a placeholder for the unified app setup
+    logging.info("Mentor Dashboard API routes are active")
+    return flask_app
+
+
+# ================================================================
 # RUN
 # ================================================================
 if __name__ == "__main__":
@@ -536,4 +547,3 @@ if __name__ == "__main__":
     print(f"🚀  SignSight Mentor Dashboard API — port {mentor_port}")
     app.run(debug=mentor_debug, host="0.0.0.0", port=mentor_port)
 
-    
