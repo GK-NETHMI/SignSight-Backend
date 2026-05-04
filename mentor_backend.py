@@ -5,7 +5,7 @@ from psutil import users
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 from bson.json_util import dumps, RELAXED_JSON_OPTIONS
-import certifi, json
+import certifi, json, logging
 from bson import ObjectId
 # ----------------------------------------------------------------
 # CONFIG  — identical to your dbConfig.py
@@ -25,18 +25,81 @@ AREAS  = ["family", "alphabet", "numbers", "objects", "actions", "emotions"]
 app  = Flask(__name__)
 CORS(app, origins="*")
 
-client = MongoClient(
-    MONGO_URI,
-    server_api=ServerApi("1"),
-    tls=True,
-    tlsCAFile=certifi.where(),
-    serverSelectionTimeoutMS=8000
-)
-db            = client[DB_NAME]
-users_col     = db["users"]
-attempts_col  = db["attempts"]
-snapshots_col = db["progress_snapshots"]
-mentors_col   = db["mentors"]
+logging.basicConfig(level=logging.INFO)
+
+# Attempt to connect to MongoDB; if it fails (e.g. missing DNS or credentials)
+# fall back to lightweight in-memory fake collections so the API can still run
+# for local development / integration testing.
+try:
+    client = MongoClient(
+        MONGO_URI,
+        server_api=ServerApi("1"),
+        tls=True,
+        tlsCAFile=certifi.where(),
+        serverSelectionTimeoutMS=8000
+    )
+    db            = client[DB_NAME]
+    users_col     = db["users"]
+    attempts_col  = db["attempts"]
+    snapshots_col = db["progress_snapshots"]
+    mentors_col   = db["mentors"]
+    logging.info("Connected to MongoDB cluster")
+except Exception as exc:
+    logging.warning("Could not connect to MongoDB, using in-memory fallbacks: %s", exc)
+
+    # Minimal in-memory collection / cursor implementations to keep endpoints working
+    class FakeCursor(list):
+        def sort(self, *a, **k):
+            return self
+        def skip(self, n):
+            return self
+        def limit(self, n):
+            return self
+
+    class FakeCollection:
+        def __init__(self):
+            self._data = []
+
+        def find(self, *args, **kwargs):
+            return FakeCursor(self._data.copy())
+
+        def find_one(self, *args, **kwargs):
+            return None
+
+        def count_documents(self, query):
+            return 0
+
+        def aggregate(self, pipeline):
+            return []
+
+        def insert_one(self, doc):
+            oid = ObjectId()
+            doc_copy = doc.copy()
+            doc_copy["_id"] = oid
+            self._data.append(doc_copy)
+            class R: pass
+            r = R()
+            r.inserted_id = oid
+            return r
+
+        def update_many(self, filter, update):
+            class R: pass
+            r = R()
+            r.modified_count = 0
+            return r
+
+        def update_one(self, filter, update):
+            class R: pass
+            r = R()
+            r.modified_count = 0
+            return r
+
+    # create fake collections
+    db = None
+    users_col = FakeCollection()
+    attempts_col = FakeCollection()
+    snapshots_col = FakeCollection()
+    mentors_col = FakeCollection()
 
 
 def to_json(obj):
