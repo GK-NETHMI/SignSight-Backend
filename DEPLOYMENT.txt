@@ -1,0 +1,392 @@
+================================================================================
+SIGNSIGHT BACKEND - DEPLOYMENT GUIDE
+================================================================================
+
+DEPLOYMENT OVERVIEW
+===================
+
+This guide will walk you through deploying the SignSight Backend to Render.com,
+a free cloud platform that makes it easy to deploy Flask applications.
+
+Why Render?
+- Free tier with good performance
+- Automatic git integration (push to deploy)
+- Built-in PostgreSQL/MongoDB support
+- Custom environment variables
+- Free SSL/TLS certificates
+- Perfect for Flask apps
+
+WHAT WILL HAPPEN
+================
+
+1. You'll create a Render.com account
+2. Connect your GitHub/GitLab repository
+3. Deploy the main branch automatically
+4. Get a public URL like: https://signsight-backend-xxxx.onrender.com
+5. Update frontend to use this URL
+6. Frontend will make API calls to deployed backend
+
+PREREQUISITE FILES
+==================
+
+✅ Procfile                - Tells Render how to start the app (CREATED)
+✅ runtime.txt             - Specifies Python 3.13 (CREATED)
+✅ requirements.txt        - All dependencies (EXISTS)
+✅ .env.example            - Environment template (CREATED)
+✅ main.py                 - Updated for production (UPDATED)
+
+STEP-BY-STEP DEPLOYMENT
+=======================
+
+STEP 1: Prepare Your Git Repository
+------------------------------------
+
+The SignSight-Backend folder MUST be a git repository.
+
+1. Navigate to the backend folder:
+   cd "/Users/farsithfawzer/Desktop/Farsith AudioToSign/SignSight-Backend"
+
+2. Initialize git if not already done:
+   git init
+   git add .
+   git commit -m "Prepare for deployment"
+
+3. Add remote to your GitHub repository:
+   git remote add origin https://github.com/YOUR_USERNAME/SignSight-Backend.git
+   git branch -M main
+   git push -u origin main
+
+NOTE: You must have a GitHub account. If you don't have one:
+   - Go to https://github.com/signup
+   - Create free account
+   - Create new repository called "SignSight-Backend"
+   - Then follow the push commands above
+
+
+STEP 2: Create Render.com Account
+----------------------------------
+
+1. Go to https://render.com
+2. Click "Sign Up" (top right)
+3. Choose "Sign up with GitHub" (easiest option)
+4. Authorize Render to access your GitHub
+5. You'll be taken to dashboard
+
+
+STEP 3: Connect GitHub Repository
+----------------------------------
+
+1. In Render dashboard, click "New +"
+2. Select "Web Service"
+3. Click "Connect a repository"
+4. Find and select "SignSight-Backend"
+5. Click "Connect"
+
+
+STEP 4: Configure the Deployment
+---------------------------------
+
+You'll see a form with these fields:
+
+NAME:
+   - Enter: signsight-backend
+   - This becomes part of your URL
+
+ENVIRONMENT:
+   - Select: Python 3
+   - Render automatically detects this from runtime.txt
+
+BUILD COMMAND:
+   - Select: pip install -r requirements.txt
+   - Render does this automatically
+
+START COMMAND:
+   - Select: gunicorn -w 4 -b 0.0.0.0:${PORT} main:app
+   - Render reads this from Procfile automatically
+
+PLAN:
+   - Select: Free (at bottom)
+   - Includes: 750 hours/month free compute time
+
+
+STEP 5: Set Environment Variables
+----------------------------------
+
+Before deploying, set these on Render:
+
+1. Click "Advanced" in the deployment form
+2. Scroll down to "Environment"
+3. Click "Add Environment Variable"
+4. Add these:
+
+   Variable Name: FLASK_ENV
+   Value: production
+
+   Variable Name: MONGO_URI
+   Value: [your MongoDB connection string]
+   (From your dbConfig.py or .env file)
+
+   Variable Name: USE_DB_FALLBACK
+   Value: true
+
+   Variable Name: FRONTEND_URL
+   Value: [Will add this later when frontend is deployed]
+
+4. Leave other variables from .env if needed (Cloudinary, etc.)
+
+
+STEP 6: Deploy!
+---------------
+
+1. Scroll to bottom and click "Create Web Service"
+2. Render will:
+   - Clone your GitHub repository
+   - Install dependencies from requirements.txt
+   - Start the app using Procfile
+   - Assign you a unique URL
+
+3. Watch the build logs (might take 2-5 minutes)
+4. Look for "service is live" message
+5. You'll get a URL like: https://signsight-backend-xxxx.onrender.com
+
+
+STEP 7: Verify Deployment
+---------------------------
+
+Once deployed, test it:
+
+1. In browser, go to your Render URL
+   https://your-app-name.onrender.com
+
+2. You should see:
+   {"service": "SignSight Backend", "status": "ok"}
+
+3. Test the student endpoint:
+   https://your-app-name.onrender.com/api/students/by-username/test
+
+4. You should get:
+   {"message": "Student not found"}
+
+If you see these responses, your backend is deployed! ✅
+
+Try these other endpoints:
+   GET  https://your-app.onrender.com/api/admin/status
+   POST https://your-app.onrender.com/api/audio-to-sign/text-to-signs
+
+
+STEP 8: Update Frontend Configuration
+--------------------------------------
+
+Now update your frontend to use the deployed backend:
+
+1. Go to frontend folder:
+   cd "/Users/farsithfawzer/Desktop/Farsith AudioToSign/front-end/sign-sight-fe"
+
+2. Edit the .env file:
+   - Change: VITE_API_BASE_URL=http://localhost:5080
+   - To: VITE_API_BASE_URL=https://your-app-name.onrender.com
+
+3. Save and rebuild frontend:
+   npm run build
+
+4. Test locally:
+   npm run dev
+   - Should now call your deployed backend
+   - Check browser network tab to verify API requests
+
+
+MONITORING & DEBUGGING
+======================
+
+VIEW LOGS:
+- In Render dashboard, click on your service
+- Click "Logs" tab
+- See real-time application logs
+- Helps debug any errors
+
+AUTO-DEPLOYMENT:
+- Every time you push to main branch: git push
+- Render automatically rebuilds and deploys
+- Takes 1-3 minutes
+
+COMMON ISSUES & SOLUTIONS
+==========================
+
+Issue: "503 Service Unavailable"
+Solution:
+  - Backend boot time takes 30-60 seconds
+  - Wait a minute and try again
+  - Check logs under "Runtime" for errors
+
+Issue: "MongoDB connection failed"
+Solution:
+  - Verify MONGO_URI environment variable is correct
+  - Check MongoDB Atlas IP whitelist includes Render IPs
+  - Add 0.0.0.0/0 to allow all IPs temporarily (not secure)
+
+Issue: CORS errors on frontend
+Solution:
+  - Make sure FRONTEND_URL environment variable is set
+  - Or set FLASK_ENV=development for wildcard CORS
+
+Issue: "ModuleNotFoundError" or "ImportError"
+Solution:
+  - Check requirements.txt has all dependencies
+  - Run: pip install -r requirements.txt locally
+  - If new dependencies added: git push (will auto-deploy)
+
+Issue: App crashes immediately
+Solution:
+  - Check in Logs tab for error messages
+  - Verify all environment variables are set
+  - Test locally first: python main.py
+
+
+PRODUCTION CHECKLIST
+====================
+
+Before going live:
+
+[ ] Backend deployed and tested
+[ ] Frontend updated to use deployed URL
+[ ] MongoDB connection string in environment
+[ ] FRONTEND_URL environment variable set
+[ ] Database has test data
+[ ] HTTPS working (Render provides free SSL)
+[ ] Environment set to "production" not "development"
+[ ] Tested login flow end-to-end
+[ ] Tested file uploads (audio/video)
+[ ] Error handling works properly
+
+
+NEXT STEPS FOR FRONTEND DEPLOYMENT
+===================================
+
+After backend is working, deploy frontend to:
+
+Option A: Vercel (recommended for React)
+   - Go to vercel.com
+   - Connect GitHub repository
+   - Set VITE_API_BASE_URL environment variable
+   - Deploy! Get URL like: https://app.vercel.app
+
+Option B: Netlify
+   - Go to netlify.com
+   - Connect GitHub
+   - Build command: npm run build
+   - Publish directory: dist
+   - Set environment variables
+   - Deploy!
+
+Option C: Render (same as backend)
+   - Static site deployment
+   - Similar process to backend
+
+
+USEFUL RENDER COMMANDS
+======================
+
+# View deployment status:
+  Open Render dashboard > Your Service > Events
+
+# Re-deploy:
+  Push to main branch: git push origin main
+  Render auto-deploys within 1 minute
+
+# Stop/Restart:
+  Render dashboard > Service Settings > Pause/Restart
+
+# View Environment Variables:
+  Render dashboard > Service Settings > Environment
+
+
+SCALING UP (When You Have More Users)
+=====================================
+
+If traffic increases:
+
+1. Render paid plans offer:
+   - More CPU/RAM
+   - More concurrent requests
+   - 99.9% uptime SLA
+
+2. Optimize database:
+   - Add MongoDB indexes
+   - Cache frequently accessed data
+   - Use CDN for static files
+
+3. Monitor performance:
+   - Check Render metrics
+   - Look for slow API endpoints
+   - Profile Python code
+
+
+USEFUL LINKS
+============
+
+Render Documentation:
+   https://render.com/docs
+
+Render Python/Flask Guide:
+   https://render.com/docs/deploy-flask
+
+Python Environment Variables:
+   https://docs.python.org/3/library/os.html#os.getenv
+
+MongoDB Connection:
+   https://www.mongodb.com/docs/atlas/driver-connection
+
+Gunicorn Configuration:
+   https://docs.gunicorn.org/en/stable/
+
+Git/GitHub Basics:
+   https://github.com/skills
+
+
+SUPPORT & HELP
+==============
+
+If deployment fails:
+
+1. Check Render logs for specific error
+2. Verify requirements.txt locally:
+   pip install -r requirements.txt
+
+3. Test backend locally:
+   python main.py
+
+4. Check environment variables are set
+5. Verify .env file not used in production
+6. Check GitHub repo has all files pushed
+
+For Git issues:
+   git status          (check what's staged)
+   git add .           (stage all changes)
+   git commit -m ".    (commit with message)
+   git push            (push to GitHub)
+
+For Python issues:
+   python --version    (check Python version)
+   pip list            (check installed packages)
+
+
+================================================================================
+SUMMARY
+================================================================================
+
+What you're doing: Making your backend accessible on the internet
+
+How: Using Render.com free tier (no credit card needed for small projects)
+
+Result: Get URL like https://signsight-backend-xxxx.onrender.com
+
+Next: Update frontend to use this URL
+
+Timeline: ~5-10 minutes to deploy, takes effect immediately
+
+Questions? Check logs in Render dashboard - they're very helpful!
+
+Good luck! 🚀
+
+================================================================================
+
