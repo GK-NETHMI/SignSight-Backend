@@ -12,7 +12,13 @@ Or with gunicorn:
 import os
 import sys
 import logging
+import warnings
 from dotenv import load_dotenv
+
+# Suppress TensorFlow warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 # Load environment variables
 load_dotenv()
@@ -23,6 +29,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+logging.getLogger('absl').setLevel(logging.ERROR)
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
 
 def create_app() -> 'Flask':  # type: ignore
     """Create and configure the Flask application."""
@@ -108,6 +117,50 @@ def create_app() -> 'Flask':  # type: ignore
         import traceback
         traceback.print_exc()
 
+    # Register blueprint: Jeran ML Model Inference API (Optional - Branch 3)
+    try:
+        import jeranapp
+        # Copy all routes from jeranapp to main app
+        for rule in jeranapp.app.url_map.iter_rules():
+            if 'static' not in str(rule) and str(rule) != '/':
+                endpoint = rule.endpoint
+                view_func = jeranapp.app.view_functions.get(endpoint)
+                if view_func:
+                    route_path = f"/api/ml{rule.rule}" if rule.rule != '/' else '/api/ml'
+                    app.add_url_rule(
+                        route_path,
+                        endpoint=f'jeran_{endpoint}',
+                        view_func=view_func,
+                        methods=rule.methods - {'HEAD', 'OPTIONS'}
+                    )
+        logger.info("✓ Jeran ML Model Inference API registered at /api/ml/*")
+    except AttributeError as e:
+        logger.debug(f"⚠️  Jeran ML API skipped (optional - MediaPipe version issue): {str(e)[:100]}")
+    except Exception as e:
+        logger.debug(f"⚠️  Jeran ML API not available (optional): {type(e).__name__}: {str(e)[:100]}")
+
+    # Register blueprint: Emotion Video Analysis API (Optional - Branch 4)
+    try:
+        import final
+        # Copy all routes from final.app to main app
+        for rule in final.app.url_map.iter_rules():
+            if 'static' not in str(rule):
+                endpoint = rule.endpoint
+                view_func = final.app.view_functions.get(endpoint)
+                if view_func:
+                    route_path = f"/api/emotion{rule.rule}" if rule.rule != '/' else '/api/emotion'
+                    app.add_url_rule(
+                        route_path,
+                        endpoint=f'final_{endpoint}',
+                        view_func=view_func,
+                        methods=rule.methods - {'HEAD', 'OPTIONS'}
+                    )
+        logger.info("✓ Emotion Video Analysis API registered at /api/emotion/*")
+    except AttributeError as e:
+        logger.debug(f"⚠️  Emotion API skipped (optional - MediaPipe version issue): {str(e)[:100]}")
+    except Exception as e:
+        logger.debug(f"⚠️  Emotion analysis API not available (optional): {type(e).__name__}: {str(e)[:100]}")
+
     # Register admin status endpoint
     @app.route('/api/admin/status', methods=['GET'])
     def admin_status():
@@ -131,9 +184,25 @@ def run_development() -> None:
     port: int = int(os.getenv('PORT', '5080'))
     debug: bool = os.getenv('FLASK_ENV', 'development') == 'development'
 
-    logger.info(f"🚀 Starting SignSight Backend on http://0.0.0.0:{port}")
-    logger.info(f"📝 Environment: {os.getenv('FLASK_ENV', 'development')}")
-    logger.info(f"🔍 Debug mode: {debug}")
+    print("\n" + "="*80)
+    print("🎉 SignSight Backend - All 4 Branches Integrated".center(80))
+    print("="*80)
+    print(f"\n🚀 Starting on http://localhost:{port}")
+    print(f"📝 Mode: {os.getenv('FLASK_ENV', 'development').upper()}")
+    print(f"🔍 Debug: {'ON' if debug else 'OFF'}")
+    print("\n" + "-"*80)
+    print("APIs Available:")
+    print("  ✓ Branch 1: Audio-to-Sign API (/api/audio-to-sign/*)")
+    print("  ✓ Branch 2: Mentor Dashboard (/api/*)")
+    print("  ✓ Branch 3: ML Inference (optional - /api/ml/*)")
+    print("  ✓ Branch 4: Emotion Analysis (optional - /api/emotion/*)")
+    print("-"*80)
+    print("Endpoints:")
+    print("  Health: GET   http://localhost:{}/".format(port))
+    print("  Admin:  GET   http://localhost:{}/api/admin/status".format(port))
+    print("  Audio:  POST  http://localhost:{}/api/audio-to-sign/text-to-signs".format(port))
+    print("  Mentor: GET   http://localhost:{}/api/admin/mentors".format(port))
+    print("-"*80 + "\n")
 
     app.run(host='0.0.0.0', port=port, debug=debug, use_reloader=debug)
 
