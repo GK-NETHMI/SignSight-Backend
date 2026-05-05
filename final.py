@@ -183,4 +183,4 @@ def status(task_id):
     return jsonify(processing_tasks.get(task_id, {"status": "unknown"}))
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5080)
+    app.run(host="0.0.0.0", port=5000)
