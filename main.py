@@ -49,10 +49,25 @@ def create_app() -> 'Flask':  # type: ignore
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['MODEL_FOLDER'], exist_ok=True)
 
-    # Configure CORS for all origins (can be restricted later)
+    # Configure CORS - allows both local dev and deployed frontend
+    allowed_origins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:4200",
+    ]
+
+    # Add deployed frontend URL if specified via environment
+    deployed_frontend = os.getenv('FRONTEND_URL')
+    if deployed_frontend:
+        allowed_origins.append(deployed_frontend)
+
+    # Add wildcard for development (remove in production)
+    if os.getenv('FLASK_ENV') == 'development':
+        allowed_origins.append("*")
+
     CORS(app, resources={
         r"/*": {
-            "origins": ["http://localhost:3000", "http://localhost:5173", "http://localhost:4200", "*"],
+            "origins": allowed_origins,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization", "Accept"],
             "expose_headers": ["Content-Type", "Content-Length"],
@@ -180,15 +195,20 @@ app = create_app()
 
 
 def run_development() -> None:
-    """Run the application in development mode."""
+    """Run the application in development/production mode."""
     port: int = int(os.getenv('PORT', '5080'))
-    debug: bool = os.getenv('FLASK_ENV', 'development') == 'development'
+    environment: str = os.getenv('FLASK_ENV', 'development')
+    debug: bool = environment == 'development'
+
+    # In production, never use debug mode
+    if environment == 'production':
+        debug = False
 
     print("\n" + "="*80)
     print("🎉 SignSight Backend - All 4 Branches Integrated".center(80))
     print("="*80)
-    print(f"\n🚀 Starting on http://localhost:{port}")
-    print(f"📝 Mode: {os.getenv('FLASK_ENV', 'development').upper()}")
+    print(f"\n🚀 Starting on 0.0.0.0:{port}")
+    print(f"📝 Mode: {environment.upper()}")
     print(f"🔍 Debug: {'ON' if debug else 'OFF'}")
     print("\n" + "-"*80)
     print("APIs Available:")
@@ -196,12 +216,6 @@ def run_development() -> None:
     print("  ✓ Branch 2: Mentor Dashboard (/api/*)")
     print("  ✓ Branch 3: ML Inference (optional - /api/ml/*)")
     print("  ✓ Branch 4: Emotion Analysis (optional - /api/emotion/*)")
-    print("-"*80)
-    print("Endpoints:")
-    print("  Health: GET   http://localhost:{}/".format(port))
-    print("  Admin:  GET   http://localhost:{}/api/admin/status".format(port))
-    print("  Audio:  POST  http://localhost:{}/api/audio-to-sign/text-to-signs".format(port))
-    print("  Mentor: GET   http://localhost:{}/api/admin/mentors".format(port))
     print("-"*80 + "\n")
 
     app.run(host='0.0.0.0', port=port, debug=debug, use_reloader=debug)
