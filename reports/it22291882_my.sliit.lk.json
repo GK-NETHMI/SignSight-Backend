@@ -1,0 +1,67 @@
+{
+  "email": "it22291882@my.sliit.lk",
+  "date": "2026-05-04T19:28:30.248275",
+  "accuracy": 33.33,
+  "results": [
+    {
+      "video": "happy_20260504192659.webm",
+      "expected": "Happy",
+      "dominant": "Angry",
+      "consistency": 56.49,
+      "distribution": {
+        "Angry": 56.49,
+        "Happy": 5.84,
+        "Neutral": 24.03,
+        "Sad": 9.74,
+        "Fear": 3.9
+      },
+      "confidence": {
+        "Angry": 0.888,
+        "Happy": 0.824,
+        "Neutral": 0.916,
+        "Sad": 0.763,
+        "Fear": 0.904
+      }
+    },
+    {
+      "video": "sad_20260504192714.webm",
+      "expected": "Sad",
+      "dominant": "Angry",
+      "consistency": 40.0,
+      "distribution": {
+        "Angry": 40.0,
+        "Happy": 0.0,
+        "Neutral": 35.0,
+        "Sad": 22.5,
+        "Fear": 2.5
+      },
+      "confidence": {
+        "Angry": 0.844,
+        "Happy": 0,
+        "Neutral": 0.938,
+        "Sad": 0.754,
+        "Fear": 0.431
+      }
+    },
+    {
+      "video": "angry_20260504192728.webm",
+      "expected": "Angry",
+      "dominant": "Angry",
+      "consistency": 51.52,
+      "distribution": {
+        "Angry": 51.52,
+        "Happy": 0.0,
+        "Neutral": 9.09,
+        "Sad": 21.21,
+        "Fear": 18.18
+      },
+      "confidence": {
+        "Angry": 0.85,
+        "Happy": 0,
+        "Neutral": 0.997,
+        "Sad": 0.732,
+        "Fear": 0.779
+      }
+    }
+  ]
+}
