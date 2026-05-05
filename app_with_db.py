@@ -73,6 +73,97 @@ class SHAPModel:
 shap_model = SHAPModel()
 
 
+def _normalize_answer(value):
+    if value is None:
+        return ""
+    normalized = str(value).strip().lower().strip("\"'")
+    return " ".join(normalized.replace("_", " ").replace("-", " ").split())
+
+
+def _first_value(data, keys):
+    if not hasattr(data, "get"):
+        return None
+
+    for key in keys:
+        value = data.get(key)
+        if value not in (None, ""):
+            return value
+
+    return None
+
+
+def _get_advanced_correct_answer(quiz_data, form_data=None):
+    answer_keys = (
+        "correct_answer",
+        "correctAnswer",
+        "expected_answer",
+        "expectedAnswer",
+        "cat4_correct_answer",
+        "cat4CorrectAnswer",
+        "advanced_correct_answer",
+        "advancedCorrectAnswer",
+        "target_answer",
+        "targetAnswer",
+        "answer",
+        "text",
+    )
+
+    if form_data:
+        correct_answer = _first_value(form_data, answer_keys)
+        if correct_answer is not None:
+            return correct_answer
+
+    correct_answer = _first_value(quiz_data, answer_keys)
+    if correct_answer is not None:
+        return correct_answer
+
+    category_4 = quiz_data.get("category_4", [])
+
+    if isinstance(category_4, list) and category_4:
+        for question in category_4:
+            correct_answer = _first_value(question, answer_keys)
+            if correct_answer is not None:
+                return correct_answer
+
+    if isinstance(category_4, dict):
+        correct_answer = _first_value(category_4, answer_keys)
+        if correct_answer is not None:
+            return correct_answer
+
+    return None
+
+
+def _append_advanced_answer_status(sign_result, correct_answer):
+    if not isinstance(sign_result, dict) or sign_result.get("error"):
+        return sign_result
+
+    predicted_answer = sign_result.get("answer") or sign_result.get("text")
+    if predicted_answer is None:
+        return sign_result
+
+    if correct_answer is None:
+        sign_result["raw_answer"] = predicted_answer
+        sign_result["correct_answer"] = None
+        sign_result["is_correct"] = False
+        sign_result["answer_status"] = "Incorrect"
+        sign_result["answer"] = f"{predicted_answer} - Incorrect"
+        sign_result["status_note"] = "correct_answer not received by backend"
+        return sign_result
+
+    is_correct = (
+        _normalize_answer(predicted_answer) == _normalize_answer(correct_answer)
+    )
+    status = "Correct" if is_correct else "Incorrect"
+
+    sign_result["raw_answer"] = predicted_answer
+    sign_result["correct_answer"] = correct_answer
+    sign_result["is_correct"] = is_correct
+    sign_result["answer_status"] = status
+    sign_result["answer"] = f"{predicted_answer} - {status}"
+
+    return sign_result
+
+
 # -------------------------
 #    QUIZ EVALUATION
 # -------------------------
@@ -247,7 +338,9 @@ def submit_quiz():
     if level == "advanced" and "cat4" in request.files:
 
         video = request.files["cat4"]
+        advanced_correct_answer = _get_advanced_correct_answer(quiz_data, request.form)
         print("Incoming video:", video.filename)
+        print("Advanced correct answer:", advanced_correct_answer)
 
         if video.filename == "":
             return jsonify({"error": "Empty video filename"}), 400
@@ -272,7 +365,10 @@ def submit_quiz():
                     timeout=60
                 )
                 res.raise_for_status()
-                video_analysis["sign_recognition"] = res.json()
+                video_analysis["sign_recognition"] = _append_advanced_answer_status(
+                    res.json(),
+                    advanced_correct_answer
+                )
         except Exception as e:
             video_analysis["sign_recognition"] = {"error": str(e)}
 

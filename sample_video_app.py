@@ -8,8 +8,7 @@ app.config['UPLOAD_FOLDER'] = 'mock_uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 WORDS = [
-    "father", "mother", "book", "pen", "run", "walk", "tree", "car",
-    "a", "b", "c", "d", "one", "two", "three"
+    "good","mother","father"
 ]
 
 @app.route("/process-video", methods=["POST"])
