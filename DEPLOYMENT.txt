@@ -46,23 +46,6 @@ The SignSight-Backend folder MUST be a git repository.
 1. Navigate to the backend folder:
    cd "/Users/farsithfawzer/Desktop/Farsith AudioToSign/SignSight-Backend"
 
-2. Initialize git if not already done:
-   git init
-   git add .
-   git commit -m "Prepare for deployment"
-
-3. Add remote to your GitHub repository:
-   git remote add origin https://github.com/YOUR_USERNAME/SignSight-Backend.git
-   git branch -M main
-   git push -u origin main
-
-NOTE: You must have a GitHub account. If you don't have one:
-   - Go to https://github.com/signup
-   - Create free account
-   - Create new repository called "SignSight-Backend"
-   - Then follow the push commands above
-
-
 STEP 2: Create Render.com Account
 ----------------------------------
 
