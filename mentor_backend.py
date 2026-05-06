@@ -1,29 +1,20 @@
 import datetime
-import os
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 from bson.json_util import dumps, RELAXED_JSON_OPTIONS
-import certifi, json, logging
+import certifi, json
 from bson import ObjectId
+from werkzeug.security import generate_password_hash, check_password_hash
+
 # ----------------------------------------------------------------
 # CONFIG  — identical to your dbConfig.py
 # ----------------------------------------------------------------
-# Prefer environment variable for credentials / cluster address. Fall back to the
-# previous hard-coded value only if MONGO_URI is not provided in the env.
-MONGO_URI = os.getenv(
-    "MONGO_URI",
-    (
-        "mongodb+srv://signsight8_db_user:IhafUkyQov1hzFdG@signsight.6fgqsty.mongodb.net/"
-        "?retryWrites=true&w=majority"
-    ),
+MONGO_URI = (
+    "mongodb+srv://signsight8_db_user:IhafUkyQov1hzFdG@signsight.6fgqsty.mongodb.net/"
+    "?retryWrites=true&w=majority"
 )
-
-# When set to 'false' the service will fail fast if it cannot reach MongoDB.
-# Set USE_DB_FALLBACK=true to keep the in-memory fallback behaviour used during
-# local development when a real MongoDB is not reachable.
-USE_DB_FALLBACK = os.getenv("USE_DB_FALLBACK", "true").lower() in ("1", "true", "yes")
 DB_NAME = "signsight"
 
 LEVELS = ["basic", "intermediate", "advanced"]
@@ -35,117 +26,23 @@ AREAS  = ["family", "alphabet", "numbers", "objects", "actions", "emotions"]
 app  = Flask(__name__)
 CORS(app, origins="*")
 
-logging.basicConfig(level=logging.INFO)
-DB_CONNECTED = False
-USING_DB_FALLBACK = False
-
-# Attempt to connect to MongoDB; if it fails (e.g. missing DNS or credentials)
-# fall back to lightweight in-memory fake collections so the API can still run
-# for local development / integration testing.
-try:
-    client = MongoClient(
-        MONGO_URI,
-        server_api=ServerApi("1"),
-        tls=True,
-        tlsCAFile=certifi.where(),
-        serverSelectionTimeoutMS=8000,
-    )
-    # Verify connectivity early with a ping (will raise on failure)
-    client.admin.command('ping')
-    db = client[DB_NAME]
-    users_col = db["users"]
-    attempts_col = db["attempts"]
-    snapshots_col = db["progress_snapshots"]
-    mentors_col = db["mentors"]
-    logging.info("Connected to MongoDB cluster: %s", MONGO_URI)
-    DB_CONNECTED = True
-    USING_DB_FALLBACK = False
-except Exception as exc:
-    logging.error("MongoDB connection failed: %s", exc)
-    if not USE_DB_FALLBACK:
-        # Fail fast so deployment/CI surfaces configuration problems immediately
-        logging.error("USE_DB_FALLBACK is false — exiting due to DB connection failure")
-        raise
-    logging.warning("Falling back to in-memory collections because USE_DB_FALLBACK=%s", USE_DB_FALLBACK)
-    DB_CONNECTED = False
-    USING_DB_FALLBACK = True
-
-    # Minimal in-memory collection / cursor implementations to keep endpoints working
-    class FakeCursor(list):
-        def sort(self, *a, **k):
-            return self
-        def skip(self, n):
-            return self
-        def limit(self, n):
-            return self
-
-    class FakeCollection:
-        def __init__(self):
-            self._data = []
-
-        def find(self, *args, **kwargs):
-            return FakeCursor(self._data.copy())
-
-        def find_one(self, *args, **kwargs):
-            return None
-
-        def count_documents(self, query):
-            return 0
-
-        def aggregate(self, pipeline):
-            return []
-
-        def insert_one(self, doc):
-            oid = ObjectId()
-            doc_copy = doc.copy()
-            doc_copy["_id"] = oid
-            self._data.append(doc_copy)
-            class R: pass
-            r = R()
-            r.inserted_id = oid
-            return r
-
-        def update_many(self, filter, update):
-            class R: pass
-            r = R()
-            r.modified_count = 0
-            return r
-
-        def update_one(self, filter, update):
-            class R: pass
-            r = R()
-            r.modified_count = 0
-            return r
-
-    # create fake collections
-    db = None
-    users_col = FakeCollection()
-    attempts_col = FakeCollection()
-    snapshots_col = FakeCollection()
-    mentors_col = FakeCollection()
+client = MongoClient(
+    MONGO_URI,
+    server_api=ServerApi("1"),
+    tls=True,
+    tlsCAFile=certifi.where(),
+    serverSelectionTimeoutMS=8000
+)
+db            = client[DB_NAME]
+users_col     = db["users"]
+attempts_col  = db["attempts"]
+snapshots_col = db["progress_snapshots"]
+mentors_col   = db["mentors"]
 
 
 def to_json(obj):
     """Serialize ObjectId / datetime for JSON."""
     return json.loads(dumps(obj, json_options=RELAXED_JSON_OPTIONS))
-
-
-@app.route('/api/admin/status', methods=['GET'])
-def admin_status():
-    """Return service status including DB connectivity (safe, masked)."""
-    try:
-        from urllib.parse import urlparse
-        parsed = urlparse(MONGO_URI)
-        host = parsed.hostname or ''
-    except Exception:
-        host = ''
-
-    return jsonify({
-        'dbConnected': bool(DB_CONNECTED),
-        'usingFallback': bool(USING_DB_FALLBACK),
-        'mongoHost': host,
-        'useDbFallbackEnv': USE_DB_FALLBACK
-    }), 200
 
 
 # ================================================================
@@ -370,7 +267,7 @@ def create_mentor():
         "email": email,
         "firebaseUid": firebase_uid,
         "maxStudents": 5,
-        "createdAt":  datetime.datetime.now(datetime.timezone.utc)
+        "createdAt":  datetime.datetime.utcnow()
     }
 
     mentors_col.insert_one(mentor)
@@ -392,7 +289,7 @@ def get_mentors():
             "id": str(m["_id"]),
             "name": m.get("name"),
             "email": m.get("email"),
-            "users": m.get("users", []),           
+            "users": m.get("users", []),
             "usersCount": len(m.get("users", [])),
             "maxUsers": 5
         })
@@ -468,12 +365,12 @@ def save_mentor_users():
         "mentorId": mentor_id,
         "userCount": len(user_ids)
     }), 200
-    
-    
+
+
 # ================================================================
 # STUDENT
-# ================================================================   
-    
+# ================================================================
+
 @app.route("/api/students", methods=["POST"])
 def create_student():
     data = request.json
@@ -482,10 +379,11 @@ def create_student():
     email        = data.get("email")
     age          = data.get("age")
     gender       = data.get("gender")
+    password     = data.get("password")
     firebase_uid = data.get("firebaseUid")
 
-    if not all([username, name, email, firebase_uid]):
-        return jsonify({"message": "Missing required fields"}), 400
+    if not all([username, name, email, password, firebase_uid]):
+        return jsonify({"message": "Missing required fields (username, name, email, password, firebaseUid)"}), 400
 
     existing = users_col.find_one({
         "$or": [{"username": username}, {"email": email}]
@@ -495,6 +393,9 @@ def create_student():
             "message": "Username already taken" if existing.get("username") == username else "Email already registered"
         }), 409
 
+    # Hash password before storing
+    hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
+
     result = users_col.insert_one({
         "userId":      username,
         "username":    username,
@@ -503,7 +404,8 @@ def create_student():
         "age":         age,
         "gender":      gender,
         "firebaseUid": firebase_uid,
-        "createdAt":   datetime.datetime.now(datetime.timezone.utc)
+        "password":    hashed_password,
+        "createdAt":   datetime.datetime.utcnow()
     })
 
     return jsonify({
@@ -527,23 +429,46 @@ def get_student_by_username(username):
         "email":    student.get("email"),
     }), 200
 
-# ================================================================
-# REGISTRATION FUNCTION
-# ================================================================
-def register_mentor_routes(flask_app):
-    """Register mentor routes to an existing Flask app."""
-    # All routes are already registered to the global 'app' object
-    # This function serves as a placeholder for the unified app setup
-    logging.info("Mentor Dashboard API routes are active")
-    return flask_app
+
+@app.route("/api/login", methods=["POST"])
+def login():
+    """Student login endpoint - validates username and password."""
+    data = request.json
+    username = data.get("username")
+    password = data.get("password")
+
+    if not username or not password:
+        return jsonify({"error": "Username and password required"}), 400
+
+    student = users_col.find_one({"username": username})
+    if not student:
+        return jsonify({"error": "Invalid username or password"}), 401
+
+    # Check if password field exists
+    stored_password = student.get("password")
+    if not stored_password:
+        return jsonify({"error": "Invalid username or password"}), 401
+
+    # Verify password
+    if not check_password_hash(stored_password, password):
+        return jsonify({"error": "Invalid username or password"}), 401
+
+    # Return user data on successful login
+    return jsonify({
+        "_id":       str(student["_id"]),
+        "username":  student.get("username"),
+        "name":      student.get("name"),
+        "email":     student.get("email"),
+        "age":       student.get("age"),
+        "gender":    student.get("gender"),
+        "message":   "Login successful"
+    }), 200
 
 
 # ================================================================
 # RUN
 # ================================================================
 if __name__ == "__main__":
-    mentor_port = int(os.getenv("MENTOR_PORT", os.getenv("PORT", "5081")))
-    mentor_debug = os.getenv("FLASK_ENV", "development") == "development"
-    print(f"🚀  SignSight Mentor Dashboard API — port {mentor_port}")
-    app.run(debug=mentor_debug, host="0.0.0.0", port=mentor_port)
+    print("🚀  SignSight Mentor Dashboard API — port 5080")
+    app.run(debug=True, host="0.0.0.0", port=5080)
 

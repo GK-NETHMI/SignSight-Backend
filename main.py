@@ -112,19 +112,16 @@ def create_app() -> 'Flask':  # type: ignore
     # Register blueprint: Mentor Dashboard API
     try:
         import mentor_backend
-        # Copy all routes from mentor_backend.app to main app
+        # Register all routes from mentor_backend directly
         for rule in mentor_backend.app.url_map.iter_rules():
-            if 'static' not in str(rule):
-                # Get the view function from mentor_backend app
-                endpoint = rule.endpoint
-                view_func = mentor_backend.app.view_functions.get(endpoint)
+            if rule.endpoint != 'static':
+                view_func = mentor_backend.app.view_functions.get(rule.endpoint)
                 if view_func:
-                    # Register the route on the main app
                     app.add_url_rule(
                         rule.rule,
-                        endpoint=f'mentor_{endpoint}',
+                        endpoint=rule.endpoint,
                         view_func=view_func,
-                        methods=rule.methods - {'HEAD', 'OPTIONS'}
+                        methods=list(rule.methods)
                     )
         logger.info("✓ Mentor Dashboard API registered")
     except Exception as e:
@@ -218,7 +215,10 @@ def run_development() -> None:
     print("  ✓ Branch 4: Emotion Analysis (optional - /api/emotion/*)")
     print("-"*80 + "\n")
 
-    app.run(host='0.0.0.0', port=port, debug=debug, use_reloader=debug)
+    # Disable the Flask reloader to avoid route-registration running only in the
+    # parent process (which causes 404s when the reloader spawns a child).
+    # In development you can restart manually if you need auto-reload.
+    app.run(host='0.0.0.0', port=port, debug=debug, use_reloader=False)
 
 
 if __name__ == '__main__':

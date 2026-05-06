@@ -3,7 +3,7 @@
 from main import app
 
 print('\n' + '='*80)
-print('🎉 FINAL INTEGRATION - ALL 4 BRANCHES')
+print(' FINAL INTEGRATION - ALL 4 BRANCHES')
 print('='*80)
 
 routes = []
@@ -42,7 +42,7 @@ for route, methods in sorted(health_routes):
     print(f'  {methods:8} {route}')
 
 print('\n' + '='*80)
-print('✅ ALL 4 BRANCHES INTEGRATED AND READY!')
+print('ALL 4 BRANCHES INTEGRATED AND READY!')
 print(f'   Total Routes: {len(routes)}')
 print('='*80 + '\n')
 
